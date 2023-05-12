@@ -1,15 +1,13 @@
-import { useState } from 'react';
 
 function Tag({ className, ...rest }: React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement>) {
     return <div className={`inline-block px-[15px] py-[3px] text-sm leading-[17px] rounded-[32px] border border-[#fff] ${className}`} {...rest} />;
 }
 
 function App() {
-    const [c, setC] = useState(0);
     return (
         <>
             <div className="min-h-full flex justify-center bg-black">
-                <div className="w-[1440px] h-[900px] px-[22px] pb-[22px] flex flex-col justify-between bg-[url('/bg-app.png')] bg-cover">
+                <div className="min-w-[1440px] w-[1440px] h-[900px] px-[22px] pb-[22px] flex flex-col justify-between bg-[url('/bg-app.png')] bg-cover">
                     <div className="h-20 flex flex-row items-center">
                         <div className="w-[290px] h-10 bg-[url('/logo.svg')]"></div>
                     </div>
