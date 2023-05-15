@@ -9,7 +9,7 @@ const spacing = Array(100)
     }, {});
 
 module.exports = {
-    content: [path.resolve(__dirname, './src/*.{js,ts,jsx,tsx}')],
+    content: [path.resolve(__dirname, './src/**/*.{js,ts,jsx,tsx}')],
     theme: {
         extend: {
             spacing,
