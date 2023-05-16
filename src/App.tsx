@@ -1,10 +1,46 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import Modal from './components/modal';
+import generateSVGICon from '@cfx-kit/wallet-avatar';
+import { useStatus, useAccount, useChainId, useBalance, connect, switchChain } from '@cfxjs/use-wallet-react/ethereum';
 
 function Tag({ className, ...rest }: React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement>) {
     return <div className={`inline-block px-[15px] py-[3px] text-sm leading-[17px] rounded-[32px] border border-[#fff] ${className}`} {...rest} />;
 }
 
+const targetChainId = import.meta.env.DEV ? '71' : '1030';
+
+function formatAccount(account: string) {
+    // 0x... | cfx:0x...
+    const [protocol, address] = account.split(':');
+    const address_str = address || protocol;
+
+    return `${address_str.slice(0, 6)}...${address_str.slice(-4)}`;
+}
+// not connect wallet enter page, status: in-detecting -> not-active, after call connect wallet, not-active -> in-active, after metamask click connect, in-active -> active
+// connect wallet refres page, status: in-detecting -> active
 function Header() {
+    const status = useStatus();
+    const account = useAccount();
+    const chainId = useChainId();
+    console.log({
+        chainId,
+        account,
+        status,
+    });
+    const avatarRef = useRef<HTMLDivElement>();
+    useEffect(() => {
+        if (account && avatarRef.current) {
+            if (avatarRef.current.firstChild) {
+                avatarRef.current.removeChild(avatarRef.current.firstChild);
+            }
+            avatarRef.current.appendChild(generateSVGICon(account));
+        }
+    }, [account]);
+    useEffect(() => {
+        if (status === 'active' && targetChainId !== chainId) {
+            switchChain('0x' + Number(targetChainId).toString(16)).catch(console.log);
+        }
+    }, [chainId, status]);
     return (
         <div className="h-20 flex flex-row items-center justify-between">
             <div className="w-[290px] h-10 bg-[url('/logo.svg')]"></div>
@@ -14,19 +50,22 @@ function Header() {
                     <div className="ml-1 w-6 h-6 bg-[url(/conflux-network-icon.svg)]"></div>
                     <div className="ml-1 font-medium">Conflux eSpace</div>
                 </div>
-                {/* connect button */}
-                {/* <div className="ml-5 h-10 px-6 rounded-full bg-[#38A0DA] text-sm leading-10 text-white">Connect Wallet</div> */}
-                <div className="ml-5 px-4 flex flex-row items-center h-10 text-sm leading-none rounded-[40px] text-white border border-current">
-                    {/* user avatar */}
+                {!account && (
                     <div
-                        style={{
-                            backgroundImage: 'url(/conflux-network-icon.svg)',
-                            backgroundSize: '100% 100%',
+                        onClick={() => {
+                            connect();
                         }}
-                        className="w-6 h-6 rounded-full "
-                    ></div>
-                    <div className="ml-2 font-medium">0x4001...4e85</div>
-                </div>
+                        className="ml-5 h-10 px-6 rounded-full bg-[#38A0DA] text-sm leading-10 text-white"
+                    >
+                        Connect Wallet
+                    </div>
+                )}
+                {account && (
+                    <div className="ml-5 px-4 flex flex-row items-center h-10 text-sm leading-none rounded-[40px] text-white border border-current">
+                        <div className="w-6 h-6 rounded-full overflow-hidden" ref={avatarRef as any}></div>
+                        <div className="ml-2 font-medium">{formatAccount(account)}</div>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -159,6 +198,7 @@ function PoolInfoAndMyLocked() {
 }
 
 function App() {
+    const [modalOpen, setModalOpen] = useState(false);
     return (
         <>
             <div className="min-h-full flex justify-center bg-black">
@@ -197,7 +237,10 @@ function App() {
                                         <div className="mt-6 text-xl leading-[29px] font-black">100,000.00 LP</div>
                                         <div className="mt-2 text-sm leading-[17px] font-medium">~$000,000.00</div>
                                     </div>
-                                    <button className="w-full py-2 px-4 h-[46px] flex items-center justify-center text-[24px] rounded-[32px] border border-current">
+                                    <button
+                                        onClick={() => setModalOpen(true)}
+                                        className="w-full py-2 px-4 h-[46px] flex items-center justify-center text-[24px] rounded-[32px] border border-current"
+                                    >
                                         Withdraw
                                     </button>
                                 </div>
@@ -219,6 +262,17 @@ function App() {
                     </div>
                 </div>
             </div>
+            {modalOpen && (
+                <Modal className="pt-[112px]">
+                    <div className="w-[700px] h-[452px] px-5 pt-[26px] pb-5 rounded-[32px] text-white border border-[#D0D0D0] bg-black">
+                        <div className="pr-2 flex flex-row items-start justify-between">
+                            <div className="text-base leading-5 font-normal">Withdraw Liquidity</div>
+                            <button onClick={() => setModalOpen(false)} className="w-6 h-6 bg-cover bg-[url(/close-icon.svg)]"></button>
+                        </div>
+                        <div className="mt-8 pr-5 text-base leading-5 text-right">Available: 60,000 LP</div>
+                    </div>
+                </Modal>
+            )}
         </>
     );
 }
