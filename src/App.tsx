@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Modal from './components/modal';
 import generateSVGICon from '@cfx-kit/wallet-avatar';
-import { useStatus, useAccount, useChainId, useBalance, connect, switchChain } from '@cfxjs/use-wallet-react/ethereum';
+import { useStatus, useAccount, useChainId, connect, switchChain } from '@cfxjs/use-wallet-react/ethereum';
 
 function Tag({ className, ...rest }: React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement>) {
     return <div className={`inline-block px-[15px] py-[3px] text-sm leading-[17px] rounded-[32px] border border-[#fff] ${className}`} {...rest} />;
@@ -22,12 +22,13 @@ function Header() {
     const status = useStatus();
     const account = useAccount();
     const chainId = useChainId();
+    const avatarRef = useRef<HTMLDivElement>();
+    const isTargetChain = chainId === targetChainId;
     console.log({
         chainId,
         account,
         status,
     });
-    const avatarRef = useRef<HTMLDivElement>();
     useEffect(() => {
         if (account && avatarRef.current) {
             if (avatarRef.current.firstChild) {
@@ -36,20 +37,28 @@ function Header() {
             avatarRef.current.appendChild(generateSVGICon(account));
         }
     }, [account]);
-    useEffect(() => {
-        if (status === 'active' && targetChainId !== chainId) {
-            switchChain('0x' + Number(targetChainId).toString(16)).catch(console.log);
-        }
-    }, [chainId, status]);
+
     return (
         <div className="h-20 flex flex-row items-center justify-between">
             <div className="w-[290px] h-10 bg-[url('/logo.svg')]"></div>
             <div className="flex flex-row">
-                <div className="px-4 flex flex-row items-center h-10 text-sm leading-none rounded-[40px] text-white border border-current">
-                    <div className="w-2 h-2 rounded-full border-[2px] border-[#009595]/20 bg-[#009595] bg-clip-content"></div>
-                    <div className="ml-1 w-6 h-6 bg-[url(/conflux-network-icon.svg)]"></div>
-                    <div className="ml-1 font-medium">Conflux eSpace</div>
-                </div>
+                {isTargetChain && (
+                    <div className="px-4 flex flex-row items-center h-10 text-sm leading-none rounded-[40px] text-white border border-current">
+                        <div className="w-2 h-2 rounded-full border-[2px] border-[#009595]/20 bg-[#009595] bg-clip-content"></div>
+                        <div className="ml-1 w-6 h-6 bg-[url(/conflux-network-icon.svg)]"></div>
+                        <div className="ml-1 font-medium">Conflux eSpace</div>
+                    </div>
+                )}
+                {!isTargetChain && (
+                    <div
+                        onClick={() => {
+                            switchChain('0x' + Number(targetChainId).toString(16)).catch(console.log);
+                        }}
+                        className="ml-5 h-10 px-6 rounded-full bg-[#38A0DA] text-sm leading-10 text-white"
+                    >
+                        Switch Network
+                    </div>
+                )}
                 {!account && (
                     <div
                         onClick={() => {
