@@ -27,25 +27,25 @@ function Header() {
                         <div className="ml-1 font-medium">Conflux eSpace</div>
                     </div>
                 )}
-                {!isTargetChain && (
-                    <div
+                {account && !isTargetChain && (
+                    <button
                         onClick={() => {
                             switchChain('0x' + Number(targetChainId).toString(16)).catch(console.log);
                         }}
                         className="ml-5 h-10 px-6 rounded-full bg-[#38A0DA] text-sm leading-10 text-white"
                     >
                         Switch Network
-                    </div>
+                    </button>
                 )}
                 {!account && (
-                    <div
+                    <button
                         onClick={() => {
                             connect();
                         }}
                         className="ml-5 h-10 px-6 rounded-full bg-[#38A0DA] text-sm leading-10 text-white"
                     >
                         Connect Wallet
-                    </div>
+                    </button>
                 )}
                 {account && (
                     <div className="ml-5 px-4 flex flex-row items-center h-10 text-sm leading-none rounded-[40px] text-white border border-current">
