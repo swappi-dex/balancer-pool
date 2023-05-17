@@ -1,42 +1,20 @@
-import { useEffect, useRef, useState } from 'react';
-import Modal from './components/modal';
-import generateSVGICon from '@cfx-kit/wallet-avatar';
+import { useState } from 'react';
+import { generateAvatarURL } from '@cfx-kit/wallet-avatar';
 import { useStatus, useAccount, useChainId, connect, switchChain } from '@cfxjs/use-wallet-react/ethereum';
 
-function Tag({ className, ...rest }: React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement>) {
-    return <div className={`inline-block px-[15px] py-[3px] text-sm leading-[17px] rounded-[32px] border border-[#fff] ${className}`} {...rest} />;
-}
+import { formatAccount } from './utils';
+import Modal from './components/modal';
+import { Tag } from './components/tag';
 
 const targetChainId = import.meta.env.DEV ? '71' : '1030';
 
-function formatAccount(account: string) {
-    // 0x... | cfx:0x...
-    const [protocol, address] = account.split(':');
-    const address_str = address || protocol;
-
-    return `${address_str.slice(0, 6)}...${address_str.slice(-4)}`;
-}
 // not connect wallet enter page, status: in-detecting -> not-active, after call connect wallet, not-active -> in-active, after metamask click connect, in-active -> active
 // connect wallet refres page, status: in-detecting -> active
 function Header() {
     const status = useStatus();
     const account = useAccount();
     const chainId = useChainId();
-    const avatarRef = useRef<HTMLDivElement>();
     const isTargetChain = chainId === targetChainId;
-    console.log({
-        chainId,
-        account,
-        status,
-    });
-    useEffect(() => {
-        if (account && avatarRef.current) {
-            if (avatarRef.current.firstChild) {
-                avatarRef.current.removeChild(avatarRef.current.firstChild);
-            }
-            avatarRef.current.appendChild(generateSVGICon(account));
-        }
-    }, [account]);
 
     return (
         <div className="h-20 flex flex-row items-center justify-between">
@@ -71,7 +49,16 @@ function Header() {
                 )}
                 {account && (
                     <div className="ml-5 px-4 flex flex-row items-center h-10 text-sm leading-none rounded-[40px] text-white border border-current">
-                        <div className="w-6 h-6 rounded-full overflow-hidden" ref={avatarRef as any}></div>
+                        <div className="w-6 h-6 rounded-full overflow-hidden">
+                            <img
+                                key={account}
+                                src={generateAvatarURL(account)}
+                                alt="avatar"
+                                onError={(e) => {
+                                    (e.target as HTMLImageElement).style.display = 'none';
+                                }}
+                            />
+                        </div>
                         <div className="ml-2 font-medium">{formatAccount(account)}</div>
                     </div>
                 )}
