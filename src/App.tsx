@@ -193,8 +193,45 @@ function PoolInfoAndMyLocked() {
     );
 }
 
+function WithdrawForm() {
+    return (
+        <div className="w-[700px] h-[452px] px-5 pt-[26px] pb-5 flex flex-col rounded-[32px] text-white border border-[#D0D0D0] bg-black">
+            <div className="pr-2 flex flex-row items-start justify-between">
+                <div className="text-base leading-5 font-normal">Withdraw Liquidity</div>
+                <button data-modal-active="close" className="w-6 h-6 bg-cover bg-[url(/close-icon.svg)]"></button>
+            </div>
+            <div className="mt-8 pr-5 text-base leading-5 text-right">Available: 60,000 LP</div>
+            <div className="mt-2 flex flex-row rounded-full border border-current">
+                <div className="px-6 py-2.5 text-base/5 font-normal border-r border-current">98ETC-2CFX LP</div>
+                <div className="flex-1 overflow-hidden pr-5 py-2.5 text-base/5 font-black text-right">
+                    <input className="w-full outline-none text-right bg-transparent" defaultValue={'0'} />
+                </div>
+            </div>
+            <div className="py-6 pl-6 pr-5 mt-5 rounded-[32px] border border-current">
+                <div className="flex flex-row items-center justify-between">
+                    <div className="flex flex-row items-center">
+                        <img className="w-8 h-8" src="/cfx-logo.png" alt="cfx" />
+                        <span className="ml-2 text-base/5 font-medium">CFX</span>
+                    </div>
+                    <div className="text-base/5 font-black">-</div>
+                </div>
+                <div className="mt-4 flex flex-row items-center justify-between">
+                    <div className="flex flex-row items-center">
+                        <img className="w-8 h-8" src="/etc-logo.png" alt="cfx" />
+                        <span className="ml-2 text-base/5 font-medium">ETC</span>
+                    </div>
+                    <div className="text-base/5 font-black">-</div>
+                </div>
+            </div>
+            <div className="flex-1 overflow-hidden flex flex-col justify-end">
+                <button className="w-full h-[46px] text-xl/none rounded-full border border-current">Withdraw</button>
+            </div>
+        </div>
+    );
+}
+
 function App() {
-    const [modalOpen, setModalOpen] = useState(false);
+    const [modalOpen, setModalOpen] = useState(!false);
     return (
         <>
             <div className="min-h-full flex justify-center bg-black">
@@ -259,14 +296,15 @@ function App() {
                 </div>
             </div>
             {modalOpen && (
-                <Modal className="pt-[112px]">
-                    <div className="w-[700px] h-[452px] px-5 pt-[26px] pb-5 rounded-[32px] text-white border border-[#D0D0D0] bg-black">
-                        <div className="pr-2 flex flex-row items-start justify-between">
-                            <div className="text-base leading-5 font-normal">Withdraw Liquidity</div>
-                            <button onClick={() => setModalOpen(false)} className="w-6 h-6 bg-cover bg-[url(/close-icon.svg)]"></button>
-                        </div>
-                        <div className="mt-8 pr-5 text-base leading-5 text-right">Available: 60,000 LP</div>
-                    </div>
+                <Modal
+                    className="pt-[112px]"
+                    onClick={(e) => {
+                        if ((e.target as HTMLElement).getAttribute('data-modal-active') === 'close') {
+                            setModalOpen(false);
+                        }
+                    }}
+                >
+                    <WithdrawForm />
                 </Modal>
             )}
         </>
