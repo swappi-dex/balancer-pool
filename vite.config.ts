@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { UserConfig, defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import abi from './vite-abi-loader';
 import fs from 'fs';
@@ -12,14 +12,13 @@ dotenv.config({
 
 import { ETCTokenAddress, CFXTokenAddress } from './src/contract/tokenAddress';
 
-// https://vitejs.dev/config/
-export default async () => {
+export default defineConfig(async () => {
     const Provider = new JsonRpcProvider(process.env.VITE_ESpaceRpcUrl);
     const abiJSON = await promisify(fs.readFile)('./src/contract/abi/SwappiFactoryWeighted.abi', 'utf8').then(JSON.parse);
     const c = new Contract('0xe1e69070fe918078462cba713bcf4eeb831e2da2', abiJSON);
     const SwappiPairWeightedAddress = await c.connect(Provider).getFunction('getPair')(ETCTokenAddress, CFXTokenAddress);
 
-    return defineConfig({
+    return {
         plugins: [
             react(),
             abi({
@@ -30,5 +29,5 @@ export default async () => {
                 },
             }),
         ],
-    });
-};
+    } as UserConfig;
+});
