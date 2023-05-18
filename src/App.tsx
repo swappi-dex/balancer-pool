@@ -1,19 +1,48 @@
 import { useState } from 'react';
 import { generateAvatarURL } from '@cfx-kit/wallet-avatar';
-import { useStatus, useAccount, useChainId, connect, switchChain } from '@cfxjs/use-wallet-react/ethereum';
+import { useAccount, useChainId, connect, switchChain } from '@cfxjs/use-wallet-react/ethereum';
+import { useRequest } from 'ahooks';
 
-import { formatAccount } from './utils';
+import { formatAccount, formatNumber } from './utils';
 import Modal from './components/modal';
 import { Tag } from './components/tag';
+
+import PairContract from './contract/abi/SwappiPairWeighted.abi';
+import { Contract, JsonRpcProvider } from 'ethers';
+
+const Provider = new JsonRpcProvider(import.meta.env.VITE_ESpaceRpcUrl);
+
+function callContractMethod<T = unknown>(Provider: JsonRpcProvider, contract: Contract, method: string, ...args: any[]) {
+    const c = contract.connect(Provider);
+    return c.getFunction(method)(...args) as Promise<T>;
+}
+
+async function getTotalSupply() {
+    const total = await callContractMethod<bigint>(Provider, PairContract, 'totalSupply');
+    const decimals = await callContractMethod<bigint>(Provider, PairContract, 'decimals');
+    return total / 10n ** decimals;
+}
+
+async function getNormalizedWeight0() {
+    const decimals = await callContractMethod<bigint>(Provider, PairContract, 'decimals');
+    const result = await callContractMethod<bigint>(Provider, PairContract, '_normalizedWeight0');
+    return (result * 10n ** 2n) / 10n ** decimals;
+}
+
+async function getNormalizedWeight1() {
+    const decimals = await callContractMethod<bigint>(Provider, PairContract, 'decimals');
+    const result = await callContractMethod<bigint>(Provider, PairContract, '_normalizedWeight1');
+    return (result * 10n ** 2n) / 10n ** decimals;
+}
 
 const targetChainId = import.meta.env.DEV ? '71' : '1030';
 
 // not connect wallet enter page, status: in-detecting -> not-active, after call connect wallet, not-active -> in-active, after metamask click connect, in-active -> active
 // connect wallet refres page, status: in-detecting -> active
 function Header() {
-    const status = useStatus();
     const account = useAccount();
     const chainId = useChainId();
+
     const isTargetChain = chainId === targetChainId;
 
     return (
@@ -231,7 +260,11 @@ function WithdrawForm() {
 }
 
 function App() {
-    const [modalOpen, setModalOpen] = useState(!false);
+    const [modalOpen, setModalOpen] = useState(false);
+    const { data } = useRequest(getTotalSupply);
+    const { data: normalizedWeight0 } = useRequest(getNormalizedWeight0);
+    const { data: normalizedWeight1 } = useRequest(getNormalizedWeight1);
+
     return (
         <>
             <div className="min-h-full flex justify-center bg-black">
@@ -249,8 +282,8 @@ function App() {
                                     <div className="ml-5 flex flex-col justify-between">
                                         <div className=" font-black text-[32px] leading-[39px]">ETC-CFX Weighted Pool</div>
                                         <div>
-                                            <Tag>98%&nbsp;ETC</Tag>
-                                            <Tag className="ml-2">2%&nbsp;CFX</Tag>
+                                            <Tag>{normalizedWeight1?.toString()}%&nbsp;ETC</Tag>
+                                            <Tag className="ml-2">{normalizedWeight0?.toString()}%&nbsp;CFX</Tag>
                                         </div>
                                     </div>
                                 </div>
@@ -258,7 +291,8 @@ function App() {
                                     <div className="mt-5 font-medium text-base leading-5">APR</div>
                                     <div className="mt-2 text-[68px] leading-[83px] font-black">100.00%</div>
                                     <div className="mt-5 font-medium text-base leading-5">Liquidity</div>
-                                    <div className="mt-2 text-[68px] leading-[83px] font-black">$100,000,000</div>
+                                    {/* todo */}
+                                    <div className="mt-2 text-[68px] leading-[83px] font-black">{!!data && formatNumber(data)}</div>
                                 </div>
                             </div>
                         </div>

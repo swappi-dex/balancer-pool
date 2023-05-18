@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@cfx-kit/wallet-avatar": "0.0.2",
+    "@cfx-kit/wallet-avatar": "^0.0.3",
     "@cfxjs/use-wallet-react": "^0.0.1-50",
     "ahooks": "^3.7.7",
     "ethers": "^6.3.0",
@@ -18,12 +18,14 @@
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
+    "@types/node": "^20.2.0",
     "@types/react": "^18.0.28",
     "@types/react-dom": "^18.0.11",
     "@typescript-eslint/eslint-plugin": "^5.57.1",
     "@typescript-eslint/parser": "^5.57.1",
     "@vitejs/plugin-react": "^4.0.0",
     "autoprefixer": "^10.4.7",
+    "dotenv": "^16.0.3",
     "postcss": "^8.4.14",
     "prettier": "^2.8.8",
     "tailwindcss": "^3.1.2",
