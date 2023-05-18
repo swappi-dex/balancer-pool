@@ -1,15 +1,19 @@
 import fs from 'fs';
-import { basename, extname } from 'path';
+import { basename } from 'path';
 import { promisify } from 'util';
 
-function abiLoader(options) {
-    const address = options.addressMap;
+interface AbiLoaderOptions {
+    addressMap?: Record<string, string>;
+}
+
+function abiLoader(options: AbiLoaderOptions = {}) {
+    const address = options.addressMap || {};
     const abiRegex = /\.abi$/;
     return {
         name: 'abi-loader',
         enforce: 'pre',
 
-        async load(id) {
+        async load(id: string) {
             if (!id.match(abiRegex)) {
                 return;
             }
