@@ -2,12 +2,6 @@ import { UserConfig, defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import abi from './vite-abi-loader';
 
-import * as dotenv from 'dotenv';
-
-dotenv.config({
-    path: `./.env.${process.env.NODE_ENV}`,
-});
-
 export default defineConfig(async () => {
     return {
         plugins: [
