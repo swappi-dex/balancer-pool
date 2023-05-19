@@ -1,4 +1,4 @@
-const isDEV = process.env.NODE_ENV === 'development';
+const isDEV = import.meta.env.MODE === 'development';
 
 // ETC
 export const ETCTokenAddress = isDEV ? '0x446467fc6d81f6b285960e430ee7207e6fac0633' : '0x446467fc6d81f6b285960e430ee7207e6fac0633';
