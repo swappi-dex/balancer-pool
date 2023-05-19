@@ -1,14 +1,20 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { generateAvatarURL } from '@cfx-kit/wallet-avatar';
 import { useAccount, useChainId, connect, switchChain } from '@cfxjs/use-wallet-react/ethereum';
 import { useRequest } from 'ahooks';
+import { Contract, JsonRpcProvider } from 'ethers';
 
-import { formatAccount, formatNumber } from './utils';
+import { formatAccount, formatNumberWithDecimals } from './utils';
 import Modal from './components/modal';
 import { Tag } from './components/tag';
 
-import PairContract from './contract/abi/SwappiPairWeighted.abi';
-import { Contract, JsonRpcProvider } from 'ethers';
+import FarmContract from './contract/abi/SwappiFarmWeighted.abi';
+import BaseFactoryContract from './contract/abi/BaseSwappiFactoryWeighted.abi';
+import RouterContract from './contract/abi/SwappiRouterWeighted.abi';
+import FactoryContract from './contract/abi/SwappiFactoryWeighted.abi';
+
+import PairContractAbi from './contract/abi/SwappiPairWeighted.json';
+import { CFXTokenAddress, ETCTokenAddress, FaucetUSDTAddress } from './contract/tokenAddress';
 
 const Provider = new JsonRpcProvider(import.meta.env.VITE_ESpaceRpcUrl);
 
@@ -17,22 +23,90 @@ function callContractMethod<T = unknown>(Provider: JsonRpcProvider, contract: Co
     return c.getFunction(method)(...args) as Promise<T>;
 }
 
-async function getTotalSupply() {
-    const total = await callContractMethod<bigint>(Provider, PairContract, 'totalSupply');
-    const decimals = await callContractMethod<bigint>(Provider, PairContract, 'decimals');
-    return total / 10n ** decimals;
+async function getPoolTotalSupply(tokenAddress: string) {
+    const pairContract = await getPairContract([tokenAddress, CFXTokenAddress]);
+    const totalSupply = await callContractMethod<bigint>(Provider, pairContract, 'totalSupply');
+    return totalSupply;
 }
 
-async function getNormalizedWeight0() {
-    const decimals = await callContractMethod<bigint>(Provider, PairContract, 'decimals');
+async function getNormalizedWeight0(PairContract: Contract) {
     const result = await callContractMethod<bigint>(Provider, PairContract, '_normalizedWeight0');
-    return (result * 10n ** 2n) / 10n ** decimals;
+    return result;
 }
 
-async function getNormalizedWeight1() {
-    const decimals = await callContractMethod<bigint>(Provider, PairContract, 'decimals');
+async function getNormalizedWeight1(PairContract: Contract) {
     const result = await callContractMethod<bigint>(Provider, PairContract, '_normalizedWeight1');
-    return (result * 10n ** 2n) / 10n ** decimals;
+    return result;
+}
+
+async function getPairAmounts(PairContract: Contract) {
+    const address0 = await callContractMethod<string>(Provider, PairContract, 'token0');
+    const address1 = await callContractMethod<string>(Provider, PairContract, 'token1');
+    const [amount0, amount1] = await callContractMethod<[bigint, bigint]>(Provider, PairContract, 'getReserves');
+    return [
+        {
+            address: address0.toLocaleLowerCase(),
+            amount: amount0,
+        },
+        {
+            address: address1.toLocaleLowerCase(),
+            amount: amount1,
+        },
+    ];
+}
+
+async function getPairContract([token0, token1]: [string, string]) {
+    const pairAddress = await callContractMethod<string>(Provider, FactoryContract, 'getPair', token0, token1);
+    const pContract = new Contract(pairAddress, PairContractAbi);
+    return pContract;
+}
+
+async function getPairAmountsFromTokens([token0, token1]: [string, string]) {
+    const pContract = await getPairContract([token0, token1]);
+    const amounts = await getPairAmounts(pContract);
+    return amounts;
+}
+
+// 获取 CFX 相对于 USDT 的价格 也就是相对于法币的价格
+async function getCFXPrice() {
+    const pairAddress = await callContractMethod<string>(Provider, BaseFactoryContract, 'getPair', CFXTokenAddress, FaucetUSDTAddress);
+    const BasePairContract = new Contract(pairAddress, PairContractAbi);
+    const amounts = await getPairAmounts(BasePairContract);
+    const CFXAmount = amounts.find((item) => item.address === CFXTokenAddress)!;
+    const USDTAmount = amounts.find((item) => item.address === FaucetUSDTAddress)!;
+    return (USDTAmount.amount * 10n ** 18n) / CFXAmount.amount;
+}
+
+// 计算基于 CFX 下 token 价格
+async function getTokenPriceBasedOnCFX(amounts: Awaited<ReturnType<typeof getPairAmountsFromTokens>>, pairContract: Contract) {
+    const index = amounts[0].address === CFXTokenAddress ? 1 : 0;
+    const [normalizedWeight0, normalizedWeight1] = await Promise.all([getNormalizedWeight0(pairContract), getNormalizedWeight1(pairContract)]);
+    const price = await callContractMethod<bigint>(Provider, RouterContract, 'quote', 1n * 10n ** 18n, amounts[index].amount, amounts[1 - index].amount, [
+        normalizedWeight0,
+        normalizedWeight1,
+    ]);
+    return price;
+}
+
+async function getLiquidity(tokenAddress: string) {
+    const [pairContract, amounts] = await Promise.all([
+        getPairContract([tokenAddress, CFXTokenAddress]),
+        getPairAmountsFromTokens([tokenAddress, CFXTokenAddress]),
+    ]);
+    const tokenAmount = amounts.find((item) => item.address === tokenAddress)!.amount;
+    const CFXAmount = amounts.find((item) => item.address === CFXTokenAddress)!.amount;
+
+    const priceBasedOnCFX = await getTokenPriceBasedOnCFX(amounts, pairContract);
+    const CFXPrice = await getCFXPrice();
+    return ((priceBasedOnCFX * tokenAmount + CFXAmount * 1n * 10n ** 18n) * CFXPrice) / 10n ** (18n + 18n);
+}
+
+async function getFarmPoolInfo(tokenAddress: string) {
+    const allPoolInfo = await callContractMethod<Array<[string, bigint, bigint, bigint, bigint, bigint]>>(Provider, FarmContract, 'getPoolInfo', 0);
+    const pairAddress = await callContractMethod<string>(Provider, FactoryContract, 'getPair', tokenAddress, CFXTokenAddress);
+    const poolInfo = allPoolInfo.find((i) => i[0] === pairAddress);
+    const [token, allocPoint, lastRewardTime, totalSupply, workingSupply, accRewardPerShare] = poolInfo!;
+    return { token, allocPoint, lastRewardTime, totalSupply, workingSupply, accRewardPerShare };
 }
 
 const targetChainId = import.meta.env.DEV ? '71' : '1030';
@@ -261,14 +335,43 @@ function WithdrawForm() {
 
 function App() {
     const [modalOpen, setModalOpen] = useState(false);
-    const { data } = useRequest(getTotalSupply);
-    const { data: normalizedWeight0 } = useRequest(getNormalizedWeight0);
-    const { data: normalizedWeight1 } = useRequest(getNormalizedWeight1);
+    const { data: pairContract } = useRequest(getPairContract, {
+        defaultParams: [[ETCTokenAddress, CFXTokenAddress]],
+    });
+    const { data: farmLiquidity } = useRequest(
+        async (tokenAddress: string) => {
+            const [farmPollInfo, totalSupply, allLiquidity] = await Promise.all([
+                getFarmPoolInfo(tokenAddress),
+                getPoolTotalSupply(tokenAddress),
+                getLiquidity(tokenAddress),
+            ]);
+            const inFarmProportion = (farmPollInfo.totalSupply * 10n ** 18n) / totalSupply;
+            return (inFarmProportion * allLiquidity) / 10n ** 18n;
+        },
+        {
+            defaultParams: [ETCTokenAddress],
+        }
+    );
+    const { data: normalizedWeight0, run: runNormalizedWeight0 } = useRequest(getNormalizedWeight0, {
+        manual: true,
+        refreshOnWindowFocus: true,
+    });
+    const { data: normalizedWeight1, run: runNormalizedWeight1 } = useRequest(getNormalizedWeight1, {
+        manual: true,
+        refreshOnWindowFocus: true,
+    });
+
+    useEffect(() => {
+        if (pairContract) {
+            runNormalizedWeight0(pairContract);
+            runNormalizedWeight1(pairContract);
+        }
+    }, [pairContract]);
 
     return (
         <>
-            <div className="min-h-full flex justify-center bg-black">
-                <div className="min-w-[1440px] w-[1440px] h-[900px] px-5 pb-[22px] flex flex-col justify-between bg-[url('/bg-app.png')] bg-cover">
+            <div className="min-h-full bg-black">
+                <div className="mx-auto min-w-[1440px] w-[1440px] h-[900px] px-5 pb-[22px] flex flex-col justify-between bg-[url('/bg-app.png')] bg-cover">
                     <Header />
                     <div className="-mx-[22px] h-20 bg-[url('/title.svg')]"></div>
                     <div className="w-full h-[452px] flex flex-row justify-stretch ">
@@ -282,8 +385,8 @@ function App() {
                                     <div className="ml-5 flex flex-col justify-between">
                                         <div className=" font-black text-[32px] leading-[39px]">ETC-CFX Weighted Pool</div>
                                         <div>
-                                            <Tag>{normalizedWeight1?.toString()}%&nbsp;ETC</Tag>
-                                            <Tag className="ml-2">{normalizedWeight0?.toString()}%&nbsp;CFX</Tag>
+                                            <Tag>{formatNumberWithDecimals((normalizedWeight1 || 0n) * 100n)}%&nbsp;ETC</Tag>
+                                            <Tag className="ml-2">{formatNumberWithDecimals((normalizedWeight0 || 0n) * 100n)}%&nbsp;CFX</Tag>
                                         </div>
                                     </div>
                                 </div>
@@ -291,8 +394,7 @@ function App() {
                                     <div className="mt-5 font-medium text-base leading-5">APR</div>
                                     <div className="mt-2 text-[68px] leading-[83px] font-black">100.00%</div>
                                     <div className="mt-5 font-medium text-base leading-5">Liquidity</div>
-                                    {/* todo */}
-                                    <div className="mt-2 text-[68px] leading-[83px] font-black">{!!data && formatNumber(data)}</div>
+                                    <div className="mt-2 text-[68px] leading-[83px] font-black">{formatNumberWithDecimals(farmLiquidity || 0n)}</div>
                                 </div>
                             </div>
                         </div>
