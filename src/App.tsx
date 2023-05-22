@@ -13,6 +13,7 @@ import FarmContract from './contract/abi/SwappiFarmWeighted.abi';
 import BaseFactoryContract from './contract/abi/BaseSwappiFactoryWeighted.abi';
 import RouterContract from './contract/abi/SwappiRouterWeighted.abi';
 import FactoryContract from './contract/abi/SwappiFactoryWeighted.abi';
+import PoolWithBalancerContract from './contract/abi/PoolWithBalancer.abi';
 
 import PairContractAbi from './contract/abi/SwappiPairWeighted.json';
 import { CFXTokenAddress, ETCTokenAddress, FaucetUSDTAddress, PPITokenAddress } from './contract/tokenAddress';
@@ -99,17 +100,26 @@ async function getTokenPriceBasedOnCFX(amounts: Awaited<ReturnType<typeof getPai
     return price;
 }
 
-async function getLiquidity(tokenAddress: string) {
-    const [pairContract, amounts] = await Promise.all([
+async function getTotalLiquidity(tokenAddress: string) {
+    const [pairContract, amounts, CFXPrice] = await Promise.all([
         getPairContract([tokenAddress, CFXTokenAddress]),
         getPairAmountsFromTokens([tokenAddress, CFXTokenAddress]),
+        getCFXPrice(),
     ]);
     const tokenAmount = amounts.find((item) => item.address === tokenAddress)!.amount;
     const CFXAmount = amounts.find((item) => item.address === CFXTokenAddress)!.amount;
-
     const priceBasedOnCFX = await getTokenPriceBasedOnCFX(amounts, pairContract);
-    const CFXPrice = await getCFXPrice();
-    return ((priceBasedOnCFX * tokenAmount + CFXAmount * 1n * 10n ** 18n) * CFXPrice) / 10n ** (18n + 18n);
+    const lpPoolTotalLiquidity = ((priceBasedOnCFX * tokenAmount + CFXAmount * 1n * 10n ** 18n) * CFXPrice) / 10n ** (18n + 18n);
+    return lpPoolTotalLiquidity;
+}
+
+async function getLiquidity(tokenAddress: string) {
+    const [lpPoolTotalLiquidity, farmPollInfo, totalSupply] = await Promise.all([
+        getTotalLiquidity(tokenAddress),
+        getFarmPoolInfo(tokenAddress),
+        getPoolTotalSupply(tokenAddress),
+    ]);
+    return (lpPoolTotalLiquidity * farmPollInfo.totalSupply) / totalSupply;
 }
 
 async function getFarmPoolInfo(tokenAddress: string) {
@@ -123,20 +133,18 @@ async function getFarmPoolInfo(tokenAddress: string) {
 async function getAPR(tokenAddress: string) {
     const APR_SHARE_NUMBER = 2n;
     const start = Math.floor(new Date().getTime() / 1000);
-    const [farmPollInfo, calculateReward, totalAllocPoint, ppiPrice, k, totalSupply, allLiquidity] = await Promise.all([
+    const [farmPollInfo, calculateReward, totalAllocPoint, ppiPrice, k, liquidity] = await Promise.all([
         getFarmPoolInfo(tokenAddress),
         callContractMethod<bigint>(Provider, PPIContract, 'calculateReward', start, start + 1),
         callContractMethod<bigint>(Provider, FarmContract, 'totalAllocPoint'),
         getPriceBasedOnUSDT(PPITokenAddress),
         callContractMethod<bigint>(Provider, FarmContract, 'k'),
         getPoolTotalSupply(tokenAddress),
-        getLiquidity(tokenAddress)
+        getLiquidity(tokenAddress),
     ]);
 
     const poolPPIReward = (farmPollInfo.allocPoint * calculateReward * 3600n * 24n * 365n) / totalAllocPoint;
     const poolProfitValue = (poolPPIReward * ppiPrice) / 10n ** 18n;
-    const inFarmProportion = (farmPollInfo.totalSupply * 10n ** 18n) / totalSupply;
-    const liquidity = (inFarmProportion * allLiquidity) / 10n ** 18n;
     const kRatio = (k * 10n ** 18n) / 100n;
     const poolApr = (poolProfitValue * 10n ** 18n) / liquidity;
     const overallBoostRatio = (farmPollInfo.workingSupply * 10n ** 18n * 10n ** 18n) / farmPollInfo.totalSupply / kRatio;
@@ -145,7 +153,15 @@ async function getAPR(tokenAddress: string) {
     return aprLowerBound * 100n;
 }
 
-const targetChainId = import.meta.env.DEV ? '71' : '1030';
+async function balanceOf(account: string) {
+    const balanceInfo = await callContractMethod<[bigint, bigint]>(Provider, PoolWithBalancerContract, 'balanceOf', account);
+    const totalLiquidity = await getTotalLiquidity(ETCTokenAddress);
+    const totalSupply = await getPoolTotalSupply(ETCTokenAddress);
+    const [totalBalance, unlockedBalance] = balanceInfo;
+    return { totalBalance, unlockedBalance, lpPrice: (totalLiquidity * 10n ** 18n) / totalSupply };
+}
+
+const targetChainId = import.meta.env.MODE === 'development' ? '71' : '1030';
 
 // not connect wallet enter page, status: in-detecting -> not-active, after call connect wallet, not-active -> in-active, after metamask click connect, in-active -> active
 // connect wallet refres page, status: in-detecting -> active
@@ -332,14 +348,18 @@ function PoolInfoAndMyLocked() {
     );
 }
 
-function WithdrawForm() {
+interface WithdrawFormProps {
+    amount?: bigint;
+}
+
+function WithdrawForm({ amount = 0n }: WithdrawFormProps) {
     return (
         <div className="w-[700px] h-[452px] px-5 pt-[26px] pb-5 flex flex-col rounded-[32px] text-white border border-[#D0D0D0] bg-black">
             <div className="pr-2 flex flex-row items-start justify-between">
                 <div className="text-base leading-5 font-normal">Withdraw Liquidity</div>
                 <button data-modal-active="close" className="w-6 h-6 bg-cover bg-[url(/close-icon.svg)]"></button>
             </div>
-            <div className="mt-8 pr-5 text-base leading-5 text-right">Available: 60,000 LP</div>
+            <div className="mt-8 pr-5 text-base leading-5 text-right">Available: {formatNumberWithDecimals(amount)} LP</div>
             <div className="mt-2 flex flex-row rounded-full border border-current">
                 <div className="px-6 py-2.5 text-base/5 font-normal border-r border-current">98ETC-2CFX LP</div>
                 <div className="flex-1 overflow-hidden pr-5 py-2.5 text-base/5 font-black text-right">
@@ -371,23 +391,15 @@ function WithdrawForm() {
 
 function App() {
     const [modalOpen, setModalOpen] = useState(false);
+
+    const account = useAccount();
+
     const { data: pairContract } = useRequest(getPairContract, {
         defaultParams: [[ETCTokenAddress, CFXTokenAddress]],
     });
-    const { data: farmLiquidity } = useRequest(
-        async (tokenAddress: string) => {
-            const [farmPollInfo, totalSupply, allLiquidity] = await Promise.all([
-                getFarmPoolInfo(tokenAddress),
-                getPoolTotalSupply(tokenAddress),
-                getLiquidity(tokenAddress),
-            ]);
-            const inFarmProportion = (farmPollInfo.totalSupply * 10n ** 18n) / totalSupply;
-            return (inFarmProportion * allLiquidity) / 10n ** 18n;
-        },
-        {
-            defaultParams: [ETCTokenAddress],
-        }
-    );
+    const { data: farmLiquidity } = useRequest(getLiquidity, {
+        defaultParams: [ETCTokenAddress],
+    });
     const { data: normalizedWeight0, run: runNormalizedWeight0 } = useRequest(getNormalizedWeight0, {
         manual: true,
         refreshOnWindowFocus: true,
@@ -407,6 +419,17 @@ function App() {
     const { data: apr } = useRequest(getAPR, {
         defaultParams: [ETCTokenAddress],
     });
+
+    const { data: LPbalance, run: runBalanceOf } = useRequest(balanceOf, {
+        manual: true,
+        refreshOnWindowFocus: true,
+    });
+
+    useEffect(() => {
+        if (account) {
+            runBalanceOf(account);
+        }
+    }, [account]);
 
     return (
         <>
@@ -443,8 +466,12 @@ function App() {
                                 <div className="flex-1 p-5 flex flex-col rounded-[32px] text-[#000] bg-white">
                                     <div className="flex-1">
                                         <div className="text-base leading-5 font-medium">My Pool</div>
-                                        <div className="mt-6 text-xl leading-[29px] font-black">100,000.00 LP</div>
-                                        <div className="mt-2 text-sm leading-[17px] font-medium">~$000,000.00</div>
+                                        <div className="mt-6 text-xl leading-[29px] font-black">
+                                            {formatNumberWithDecimals(LPbalance?.totalBalance || 0n)} LP
+                                        </div>
+                                        <div className="mt-2 text-sm leading-[17px] font-medium">
+                                            ~${formatNumberWithDecimals(((LPbalance?.lpPrice || 0n) * (LPbalance?.totalBalance || 0n)) / 10n ** 18n)}
+                                        </div>
                                     </div>
                                     <button
                                         onClick={() => setModalOpen(true)}
@@ -480,7 +507,7 @@ function App() {
                         }
                     }}
                 >
-                    <WithdrawForm />
+                    <WithdrawForm amount={LPbalance?.unlockedBalance || 0n} />
                 </Modal>
             )}
         </>
