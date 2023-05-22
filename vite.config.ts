@@ -10,6 +10,7 @@ export default defineConfig(async () => {
             react(),
             abi({
                 addressMap: {
+                    PoolWithBalancer: '0x42efd8ea3e8a740fcc9f0b420e9117525b8f1eaf',
                     PPI: '0xf256ea0bcb5a3a3a2cef0af4d927b1900f9fc18b',
                     SwappiFarmWeighted: '0x13319d155e2d8f26f421214111b5592a86088878',
                     SwappiRouterWeighted: '0xfbf882a0faa57bf8ec1741b08742333ca633fa89',
