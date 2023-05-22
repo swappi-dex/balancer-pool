@@ -8,13 +8,14 @@ import { formatAccount, formatNumberWithDecimals } from './utils';
 import Modal from './components/modal';
 import { Tag } from './components/tag';
 
+import PPIContract from './contract/abi/PPI.abi';
 import FarmContract from './contract/abi/SwappiFarmWeighted.abi';
 import BaseFactoryContract from './contract/abi/BaseSwappiFactoryWeighted.abi';
 import RouterContract from './contract/abi/SwappiRouterWeighted.abi';
 import FactoryContract from './contract/abi/SwappiFactoryWeighted.abi';
 
 import PairContractAbi from './contract/abi/SwappiPairWeighted.json';
-import { CFXTokenAddress, ETCTokenAddress, FaucetUSDTAddress } from './contract/tokenAddress';
+import { CFXTokenAddress, ETCTokenAddress, FaucetUSDTAddress, PPITokenAddress } from './contract/tokenAddress';
 
 const Provider = new JsonRpcProvider(import.meta.env.VITE_ESpaceRpcUrl);
 
@@ -77,6 +78,16 @@ async function getCFXPrice() {
     return (USDTAmount.amount * 10n ** 18n) / CFXAmount.amount;
 }
 
+// 获取 CFX 相对于 USDT 的价格 也就是相对于法币的价格
+async function getPriceBasedOnUSDT(tokenAdress: string) {
+    const pairAddress = await callContractMethod<string>(Provider, BaseFactoryContract, 'getPair', tokenAdress, FaucetUSDTAddress);
+    const BasePairContract = new Contract(pairAddress, PairContractAbi);
+    const amounts = await getPairAmounts(BasePairContract);
+    const CFXAmount = amounts.find((item) => item.address === tokenAdress)!;
+    const USDTAmount = amounts.find((item) => item.address === FaucetUSDTAddress)!;
+    return (USDTAmount.amount * 10n ** 18n) / CFXAmount.amount;
+}
+
 // 计算基于 CFX 下 token 价格
 async function getTokenPriceBasedOnCFX(amounts: Awaited<ReturnType<typeof getPairAmountsFromTokens>>, pairContract: Contract) {
     const index = amounts[0].address === CFXTokenAddress ? 1 : 0;
@@ -107,6 +118,31 @@ async function getFarmPoolInfo(tokenAddress: string) {
     const poolInfo = allPoolInfo.find((i) => i[0] === pairAddress);
     const [token, allocPoint, lastRewardTime, totalSupply, workingSupply, accRewardPerShare] = poolInfo!;
     return { token, allocPoint, lastRewardTime, totalSupply, workingSupply, accRewardPerShare };
+}
+
+async function getAPR(tokenAddress: string) {
+    const APR_SHARE_NUMBER = 2n;
+    const start = Math.floor(new Date().getTime() / 1000);
+    const [farmPollInfo, calculateReward, totalAllocPoint, ppiPrice, k, totalSupply, allLiquidity] = await Promise.all([
+        getFarmPoolInfo(tokenAddress),
+        callContractMethod<bigint>(Provider, PPIContract, 'calculateReward', start, start + 1),
+        callContractMethod<bigint>(Provider, FarmContract, 'totalAllocPoint'),
+        getPriceBasedOnUSDT(PPITokenAddress),
+        callContractMethod<bigint>(Provider, FarmContract, 'k'),
+        getPoolTotalSupply(tokenAddress),
+        getLiquidity(tokenAddress)
+    ]);
+
+    const poolPPIReward = (farmPollInfo.allocPoint * calculateReward * 3600n * 24n * 365n) / totalAllocPoint;
+    const poolProfitValue = (poolPPIReward * ppiPrice) / 10n ** 18n;
+    const inFarmProportion = (farmPollInfo.totalSupply * 10n ** 18n) / totalSupply;
+    const liquidity = (inFarmProportion * allLiquidity) / 10n ** 18n;
+    const kRatio = (k * 10n ** 18n) / 100n;
+    const poolApr = (poolProfitValue * 10n ** 18n) / liquidity;
+    const overallBoostRatio = (farmPollInfo.workingSupply * 10n ** 18n * 10n ** 18n) / farmPollInfo.totalSupply / kRatio;
+    const aprLowerBound = (poolApr * 10n ** 18n) / overallBoostRatio / APR_SHARE_NUMBER;
+
+    return aprLowerBound * 100n;
 }
 
 const targetChainId = import.meta.env.DEV ? '71' : '1030';
@@ -368,6 +404,10 @@ function App() {
         }
     }, [pairContract]);
 
+    const { data: apr } = useRequest(getAPR, {
+        defaultParams: [ETCTokenAddress],
+    });
+
     return (
         <>
             <div className="min-h-full bg-black">
@@ -392,7 +432,7 @@ function App() {
                                 </div>
                                 <div>
                                     <div className="mt-5 font-medium text-base leading-5">APR</div>
-                                    <div className="mt-2 text-[68px] leading-[83px] font-black">100.00%</div>
+                                    <div className="mt-2 text-[68px] leading-[83px] font-black">{formatNumberWithDecimals(apr || 0n)}%</div>
                                     <div className="mt-5 font-medium text-base leading-5">Liquidity</div>
                                     <div className="mt-2 text-[68px] leading-[83px] font-black">{formatNumberWithDecimals(farmLiquidity || 0n)}</div>
                                 </div>
