@@ -15,5 +15,5 @@ export function formatNumber(n: number | bigint) {
 }
 
 export function formatNumberWithDecimals(n: bigint) {
-    return formatNumber(Number((n / 10n ** (18n - BigInt(Digits))).toString()) / 10 ** 2);
+    return formatNumber(Number((n / 10n ** (18n - BigInt(Digits))).toString()) / 10 ** Digits);
 }
