@@ -5,3 +5,7 @@ declare module '*.abi' {
     const classes: Contract;
     export default classes;
 }
+
+interface Window {
+    ethereum: import('ethers').Eip1193Provider;
+}
