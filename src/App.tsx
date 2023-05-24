@@ -144,7 +144,7 @@ async function getAPR() {
 }
 
 async function balanceOf(account: string) {
-    const balanceInfo = await callContractMethod<[bigint, bigint]>(Provider, PoolWithBalancerContract, 'balanceOf', account);
+    const balanceInfo = await callContractMethod<[bigint, bigint, any]>(Provider, PoolWithBalancerContract, 'balanceOf', account);
     const totalLiquidity = await getTotalLiquidity(ETCTokenAddress);
     const totalSupply = await getPoolTotalSupply();
     const [totalBalance, unlockedBalance] = balanceInfo;
@@ -490,6 +490,7 @@ function App() {
     const { data: pairContract } = useRequest(getPairContract, {});
     const { data: farmLiquidity } = useRequest(getLiquidity, {
         defaultParams: [ETCTokenAddress],
+        refreshOnWindowFocus: true
     });
     const { data: normalizedWeight0, run: runNormalizedWeight0 } = useRequest(getNormalizedWeight0, {
         manual: true,
@@ -502,6 +503,7 @@ function App() {
 
     const { data: apr } = useRequest(getAPR, {
         defaultParams: [],
+        refreshOnWindowFocus: true
     });
 
     const { data: LPbalance, run: runBalanceOf } = useRequest(balanceOf, {
