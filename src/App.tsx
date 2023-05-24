@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { generateAvatarURL } from '@cfx-kit/wallet-avatar';
 import { useAccount, useChainId, connect, switchChain } from '@cfxjs/use-wallet-react/ethereum';
 import { useRequest, useSetState } from 'ahooks';
-import { Contract, JsonRpcProvider, BrowserProvider } from 'ethers';
+import { Contract, JsonRpcProvider, BrowserProvider, Result } from 'ethers';
 
 import { formatAccount, formatNumberWithDecimals, formatNumberWithDecimals8 } from './utils';
 import Modal from './components/modal';
@@ -144,11 +144,19 @@ async function getAPR() {
 }
 
 async function balanceOf(account: string) {
-    const balanceInfo = await callContractMethod<[bigint, bigint, any]>(Provider, PoolWithBalancerContract, 'balanceOf', account);
+    const balanceInfo = await callContractMethod<[bigint, bigint, Result]>(Provider, PoolWithBalancerContract, 'balanceOf', account);
     const totalLiquidity = await getTotalLiquidity(ETCTokenAddress);
     const totalSupply = await getPoolTotalSupply();
-    const [totalBalance, unlockedBalance] = balanceInfo;
-    return { totalBalance, unlockedBalance, lpPrice: (totalLiquidity * precisionNumber) / totalSupply };
+    const [totalBalance, unlockedBalance, lockedBalances] = balanceInfo;
+
+    const lockedBalanceList = lockedBalances.toArray().map(([amount, time]) => {
+        return {
+            amount: amount as bigint,
+            time: (time * 1000n) as bigint,
+        };
+    });
+
+    return { totalBalance, unlockedBalance, lockedBalanceList, lpPrice: (totalLiquidity * precisionNumber) / totalSupply };
 }
 
 const targetChainId = import.meta.env.MODE === 'development' ? '71' : '1030';
@@ -212,7 +220,11 @@ function Header() {
     );
 }
 
-function PoolInfoAndMyLocked() {
+interface PoolInfoAndMyLockedProps {
+    lockedBalanceList?: Awaited<ReturnType<typeof balanceOf>>['lockedBalanceList'];
+}
+
+function PoolInfoAndMyLocked({ lockedBalanceList = [] }: PoolInfoAndMyLockedProps) {
     const [tabIndex, setTabIndex] = useState(0);
     const switchTab = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
         const tabIndex = parseInt((e.target as HTMLElement).getAttribute('data-tab-index') || '0');
@@ -247,7 +259,7 @@ function PoolInfoAndMyLocked() {
                     }}
                     className="pr-2 w-full transition-all flex-shrink-0 overflow-y-scroll scroll-bar"
                 >
-                    <table className="text-left w-full h-full">
+                    <table className="text-left w-full">
                         <thead className="sticky top-0 bg-[#FFCB14]">
                             <tr className="top-0 left-0 right-0 overflow-visible">
                                 {[
@@ -308,7 +320,7 @@ function PoolInfoAndMyLocked() {
                     }}
                     className="pr-2 w-full transition-all flex-shrink-0 overflow-y-scroll scroll-bar"
                 >
-                    <table className="text-left w-full h-full">
+                    <table className="text-left w-full">
                         <thead className="sticky top-0 bg-[#FFCB14]">
                             <tr className="top-0 left-0 right-0 overflow-visible ">
                                 <th className="relative w-full p-0 leading-none font-medium">
@@ -320,16 +332,14 @@ function PoolInfoAndMyLocked() {
                             </tr>
                         </thead>
                         <tbody className="">
-                            {Array(10)
-                                .fill('$')
-                                .map((_, index) => {
-                                    return (
-                                        <tr className="h-[48px] w-full border-b last:border-none border-current text-base leading-5" key={index}>
-                                            <td className="pl-4 w-full font-black">100,000.00 LP </td>
-                                            <td className=" font-medium whitespace-nowrap">2023/08/08 14:00:00</td>
-                                        </tr>
-                                    );
-                                })}
+                            {lockedBalanceList.map(({ amount, time }, index) => {
+                                return (
+                                    <tr className="h-[48px] w-full border-b last:border-none border-current text-base leading-5" key={index}>
+                                        <td className="pl-4 w-full font-black">{formatNumberWithDecimals8(amount)} LP </td>
+                                        <td className=" font-medium whitespace-nowrap">{new Date(Number(time)).toLocaleString()}</td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
@@ -635,7 +645,7 @@ function App() {
                                 </div>
                             </div>
                             <div className="flex-1 overflow-hidden rounded-[32px] bg-[#FFCB14] text-black">
-                                <PoolInfoAndMyLocked />
+                                <PoolInfoAndMyLocked lockedBalanceList={LPbalance?.lockedBalanceList} />
                             </div>
                         </div>
                     </div>
