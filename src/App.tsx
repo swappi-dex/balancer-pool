@@ -249,37 +249,6 @@ function PoolInfoAndMyLocked() {
                 >
                     <table className="text-left w-full h-full">
                         <thead className="sticky top-0 bg-[#FFCB14]">
-                            <tr className="top-0 left-0 right-0 overflow-visible ">
-                                <th className="relative w-full p-0 leading-none font-medium">
-                                    <span className="bottom-0 w-full h-[26px] bg-[#FFCB14] pl-4 pb-[13px] text-base leading-5 inline-block">Amount</span>
-                                </th>
-                                <th className="relative p-0 leading-none font-medium whitespace-nowrap">
-                                    <span className="bottom-0 w-full h-[26px] bg-[#FFCB14] pb-[13px] text-base leading-5 inline-block">Unlock Time</span>
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody className="">
-                            {Array(10)
-                                .fill('$')
-                                .map((_, index) => {
-                                    return (
-                                        <tr className="h-[48px] w-full border-b last:border-none border-current text-base leading-5" key={index}>
-                                            <td className="pl-4 w-full font-black">100,000.00 LP </td>
-                                            <td className=" font-medium whitespace-nowrap">2023/08/08 14:00:00</td>
-                                        </tr>
-                                    );
-                                })}
-                        </tbody>
-                    </table>
-                </div>
-                <div
-                    style={{
-                        transform: `translateX(-${100 * tabIndex}%)`,
-                    }}
-                    className="pr-2 w-full transition-all flex-shrink-0 overflow-y-scroll scroll-bar"
-                >
-                    <table className="text-left w-full h-full">
-                        <thead className="sticky top-0 bg-[#FFCB14]">
                             <tr className="top-0 left-0 right-0 overflow-visible">
                                 {[
                                     {
@@ -327,6 +296,37 @@ function PoolInfoAndMyLocked() {
                                             <td className="whitespace-nowrap">300.000.12</td>
                                             <td className="whitespace-nowrap">300.000.12</td>
                                             <td className="whitespace-nowrap">79.21%</td>
+                                        </tr>
+                                    );
+                                })}
+                        </tbody>
+                    </table>
+                </div>
+                <div
+                    style={{
+                        transform: `translateX(-${100 * tabIndex}%)`,
+                    }}
+                    className="pr-2 w-full transition-all flex-shrink-0 overflow-y-scroll scroll-bar"
+                >
+                    <table className="text-left w-full h-full">
+                        <thead className="sticky top-0 bg-[#FFCB14]">
+                            <tr className="top-0 left-0 right-0 overflow-visible ">
+                                <th className="relative w-full p-0 leading-none font-medium">
+                                    <span className="bottom-0 w-full h-[26px] bg-[#FFCB14] pl-4 pb-[13px] text-base leading-5 inline-block">Amount</span>
+                                </th>
+                                <th className="relative p-0 leading-none font-medium whitespace-nowrap">
+                                    <span className="bottom-0 w-full h-[26px] bg-[#FFCB14] pb-[13px] text-base leading-5 inline-block">Unlock Time</span>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody className="">
+                            {Array(10)
+                                .fill('$')
+                                .map((_, index) => {
+                                    return (
+                                        <tr className="h-[48px] w-full border-b last:border-none border-current text-base leading-5" key={index}>
+                                            <td className="pl-4 w-full font-black">100,000.00 LP </td>
+                                            <td className=" font-medium whitespace-nowrap">2023/08/08 14:00:00</td>
                                         </tr>
                                     );
                                 })}
@@ -490,7 +490,7 @@ function App() {
     const { data: pairContract } = useRequest(getPairContract, {});
     const { data: farmLiquidity } = useRequest(getLiquidity, {
         defaultParams: [ETCTokenAddress],
-        refreshOnWindowFocus: true
+        refreshOnWindowFocus: true,
     });
     const { data: normalizedWeight0, run: runNormalizedWeight0 } = useRequest(getNormalizedWeight0, {
         manual: true,
@@ -503,7 +503,7 @@ function App() {
 
     const { data: apr } = useRequest(getAPR, {
         defaultParams: [],
-        refreshOnWindowFocus: true
+        refreshOnWindowFocus: true,
     });
 
     const { data: LPbalance, run: runBalanceOf } = useRequest(balanceOf, {
