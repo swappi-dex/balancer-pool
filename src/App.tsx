@@ -1,33 +1,31 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { generateAvatarURL } from '@cfx-kit/wallet-avatar';
 import { useAccount, useChainId, connect, switchChain } from '@cfxjs/use-wallet-react/ethereum';
-import { useRequest } from 'ahooks';
-import { Contract, JsonRpcProvider } from 'ethers';
+import { useRequest, useSetState } from 'ahooks';
+import { Contract, JsonRpcProvider, BrowserProvider } from 'ethers';
 
-import { formatAccount, formatNumberWithDecimals } from './utils';
+import { formatAccount, formatNumberWithDecimals, formatNumberWithDecimals8 } from './utils';
 import Modal from './components/modal';
 import { Tag } from './components/tag';
 
-import PPIContract from './contract/abi/PPI.abi';
+import PPIContract from './contract/abi/PPIFactory.abi';
 import FarmContract from './contract/abi/SwappiFarmWeighted.abi';
 import BaseFactoryContract from './contract/abi/BaseSwappiFactoryWeighted.abi';
 import RouterContract from './contract/abi/SwappiRouterWeighted.abi';
-import FactoryContract from './contract/abi/SwappiFactoryWeighted.abi';
 import PoolWithBalancerContract from './contract/abi/PoolWithBalancer.abi';
 
 import PairContractAbi from './contract/abi/SwappiPairWeighted.json';
+// import ERC20ABIJSON from './contract/abi/ERC20.json';
 import { CFXTokenAddress, ETCTokenAddress, FaucetUSDTAddress, PPITokenAddress } from './contract/tokenAddress';
+import { callContractMethod, callContractWriteMethod } from './contract';
 
 const Provider = new JsonRpcProvider(import.meta.env.VITE_ESpaceRpcUrl);
 
-function callContractMethod<T = unknown>(Provider: JsonRpcProvider, contract: Contract, method: string, ...args: any[]) {
-    const c = contract.connect(Provider);
-    return c.getFunction(method)(...args) as Promise<T>;
-}
+const precisionNumber = 10n ** 18n;
 
-async function getPoolTotalSupply(tokenAddress: string) {
-    const pairContract = await getPairContract([tokenAddress, CFXTokenAddress]);
-    const totalSupply = await callContractMethod<bigint>(Provider, pairContract, 'totalSupply');
+async function getPoolTotalSupply(pairContract?: Contract) {
+    const pC = pairContract || (await getPairContract());
+    const totalSupply = await callContractMethod<bigint>(Provider, pC, 'totalSupply');
     return totalSupply;
 }
 
@@ -44,7 +42,8 @@ async function getNormalizedWeight1(PairContract: Contract) {
 async function getPairAmounts(PairContract: Contract) {
     const address0 = await callContractMethod<string>(Provider, PairContract, 'token0');
     const address1 = await callContractMethod<string>(Provider, PairContract, 'token1');
-    const [amount0, amount1] = await callContractMethod<[bigint, bigint]>(Provider, PairContract, 'getReserves');
+    const result = await callContractMethod<[bigint, bigint]>(Provider, PairContract, 'getReserves');
+    const [amount0, amount1] = result;
     return [
         {
             address: address0.toLocaleLowerCase(),
@@ -57,14 +56,14 @@ async function getPairAmounts(PairContract: Contract) {
     ];
 }
 
-async function getPairContract([token0, token1]: [string, string]) {
-    const pairAddress = await callContractMethod<string>(Provider, FactoryContract, 'getPair', token0, token1);
+async function getPairContract() {
+    const pairAddress = import.meta.env.LPTokenAddress;
     const pContract = new Contract(pairAddress, PairContractAbi);
     return pContract;
 }
 
-async function getPairAmountsFromTokens([token0, token1]: [string, string]) {
-    const pContract = await getPairContract([token0, token1]);
+async function getPairAmountsFromTokens() {
+    const pContract = await getPairContract();
     const amounts = await getPairAmounts(pContract);
     return amounts;
 }
@@ -76,7 +75,7 @@ async function getCFXPrice() {
     const amounts = await getPairAmounts(BasePairContract);
     const CFXAmount = amounts.find((item) => item.address === CFXTokenAddress)!;
     const USDTAmount = amounts.find((item) => item.address === FaucetUSDTAddress)!;
-    return (USDTAmount.amount * 10n ** 18n) / CFXAmount.amount;
+    return (USDTAmount.amount * precisionNumber) / CFXAmount.amount;
 }
 
 // 获取 CFX 相对于 USDT 的价格 也就是相对于法币的价格
@@ -86,14 +85,14 @@ async function getPriceBasedOnUSDT(tokenAdress: string) {
     const amounts = await getPairAmounts(BasePairContract);
     const CFXAmount = amounts.find((item) => item.address === tokenAdress)!;
     const USDTAmount = amounts.find((item) => item.address === FaucetUSDTAddress)!;
-    return (USDTAmount.amount * 10n ** 18n) / CFXAmount.amount;
+    return (USDTAmount.amount * precisionNumber) / CFXAmount.amount;
 }
 
 // 计算基于 CFX 下 token 价格
 async function getTokenPriceBasedOnCFX(amounts: Awaited<ReturnType<typeof getPairAmountsFromTokens>>, pairContract: Contract) {
     const index = amounts[0].address === CFXTokenAddress ? 1 : 0;
     const [normalizedWeight0, normalizedWeight1] = await Promise.all([getNormalizedWeight0(pairContract), getNormalizedWeight1(pairContract)]);
-    const price = await callContractMethod<bigint>(Provider, RouterContract, 'quote', 1n * 10n ** 18n, amounts[index].amount, amounts[1 - index].amount, [
+    const price = await callContractMethod<bigint>(Provider, RouterContract, 'quote', 1n * precisionNumber, amounts[index].amount, amounts[1 - index].amount, [
         normalizedWeight0,
         normalizedWeight1,
     ]);
@@ -101,54 +100,45 @@ async function getTokenPriceBasedOnCFX(amounts: Awaited<ReturnType<typeof getPai
 }
 
 async function getTotalLiquidity(tokenAddress: string) {
-    const [pairContract, amounts, CFXPrice] = await Promise.all([
-        getPairContract([tokenAddress, CFXTokenAddress]),
-        getPairAmountsFromTokens([tokenAddress, CFXTokenAddress]),
-        getCFXPrice(),
-    ]);
+    const [pairContract, amounts, CFXPrice] = await Promise.all([getPairContract(), getPairAmountsFromTokens(), getCFXPrice()]);
     const tokenAmount = amounts.find((item) => item.address === tokenAddress)!.amount;
     const CFXAmount = amounts.find((item) => item.address === CFXTokenAddress)!.amount;
     const priceBasedOnCFX = await getTokenPriceBasedOnCFX(amounts, pairContract);
-    const lpPoolTotalLiquidity = ((priceBasedOnCFX * tokenAmount + CFXAmount * 1n * 10n ** 18n) * CFXPrice) / 10n ** (18n + 18n);
+    const lpPoolTotalLiquidity = ((priceBasedOnCFX * tokenAmount + CFXAmount * 1n * precisionNumber) * CFXPrice) / 10n ** (18n + 18n);
     return lpPoolTotalLiquidity;
 }
 
 async function getLiquidity(tokenAddress: string) {
-    const [lpPoolTotalLiquidity, farmPollInfo, totalSupply] = await Promise.all([
-        getTotalLiquidity(tokenAddress),
-        getFarmPoolInfo(tokenAddress),
-        getPoolTotalSupply(tokenAddress),
-    ]);
+    const [lpPoolTotalLiquidity, farmPollInfo, totalSupply] = await Promise.all([getTotalLiquidity(tokenAddress), getFarmPoolInfo(), getPoolTotalSupply()]);
     return (lpPoolTotalLiquidity * farmPollInfo.totalSupply) / totalSupply;
 }
 
-async function getFarmPoolInfo(tokenAddress: string) {
+async function getFarmPoolInfo() {
     const allPoolInfo = await callContractMethod<Array<[string, bigint, bigint, bigint, bigint, bigint]>>(Provider, FarmContract, 'getPoolInfo', 0);
-    const pairAddress = await callContractMethod<string>(Provider, FactoryContract, 'getPair', tokenAddress, CFXTokenAddress);
-    const poolInfo = allPoolInfo.find((i) => i[0] === pairAddress);
+    const pairAddress = import.meta.env.LPTokenAddress;
+    const poolInfo = allPoolInfo.find((i) => i[0].toLocaleLowerCase() === pairAddress);
     const [token, allocPoint, lastRewardTime, totalSupply, workingSupply, accRewardPerShare] = poolInfo!;
     return { token, allocPoint, lastRewardTime, totalSupply, workingSupply, accRewardPerShare };
 }
 
-async function getAPR(tokenAddress: string) {
+async function getAPR() {
     const APR_SHARE_NUMBER = 2n;
     const start = Math.floor(new Date().getTime() / 1000);
     const [farmPollInfo, calculateReward, totalAllocPoint, ppiPrice, k, liquidity] = await Promise.all([
-        getFarmPoolInfo(tokenAddress),
+        getFarmPoolInfo(),
         callContractMethod<bigint>(Provider, PPIContract, 'calculateReward', start, start + 1),
         callContractMethod<bigint>(Provider, FarmContract, 'totalAllocPoint'),
         getPriceBasedOnUSDT(PPITokenAddress),
         callContractMethod<bigint>(Provider, FarmContract, 'k'),
-        getPoolTotalSupply(tokenAddress),
-        getLiquidity(tokenAddress),
+        getPoolTotalSupply(),
     ]);
 
     const poolPPIReward = (farmPollInfo.allocPoint * calculateReward * 3600n * 24n * 365n) / totalAllocPoint;
-    const poolProfitValue = (poolPPIReward * ppiPrice) / 10n ** 18n;
-    const kRatio = (k * 10n ** 18n) / 100n;
-    const poolApr = (poolProfitValue * 10n ** 18n) / liquidity;
-    const overallBoostRatio = (farmPollInfo.workingSupply * 10n ** 18n * 10n ** 18n) / farmPollInfo.totalSupply / kRatio;
-    const aprLowerBound = (poolApr * 10n ** 18n) / overallBoostRatio / APR_SHARE_NUMBER;
+    const poolProfitValue = (poolPPIReward * ppiPrice) / precisionNumber;
+    const kRatio = (k * precisionNumber) / 100n;
+    const poolApr = (poolProfitValue * precisionNumber) / liquidity;
+    const overallBoostRatio = (farmPollInfo.workingSupply * precisionNumber * precisionNumber) / farmPollInfo.totalSupply / kRatio;
+    const aprLowerBound = (poolApr * precisionNumber) / overallBoostRatio / APR_SHARE_NUMBER;
 
     return aprLowerBound * 100n;
 }
@@ -156,9 +146,9 @@ async function getAPR(tokenAddress: string) {
 async function balanceOf(account: string) {
     const balanceInfo = await callContractMethod<[bigint, bigint]>(Provider, PoolWithBalancerContract, 'balanceOf', account);
     const totalLiquidity = await getTotalLiquidity(ETCTokenAddress);
-    const totalSupply = await getPoolTotalSupply(ETCTokenAddress);
+    const totalSupply = await getPoolTotalSupply();
     const [totalBalance, unlockedBalance] = balanceInfo;
-    return { totalBalance, unlockedBalance, lpPrice: (totalLiquidity * 10n ** 18n) / totalSupply };
+    return { totalBalance, unlockedBalance, lpPrice: (totalLiquidity * precisionNumber) / totalSupply };
 }
 
 const targetChainId = import.meta.env.MODE === 'development' ? '71' : '1030';
@@ -349,21 +339,65 @@ function PoolInfoAndMyLocked() {
 }
 
 interface WithdrawFormProps {
-    amount?: bigint;
+    amountsAndTotalSupply?: {
+        pairAddress: string;
+        amounts: {
+            address: string;
+            amount: bigint;
+        }[];
+        totalSupply: bigint;
+    };
+    maxAmount?: bigint;
 }
 
-function WithdrawForm({ amount = 0n }: WithdrawFormProps) {
+function WithdrawForm({ amountsAndTotalSupply, maxAmount = 0n }: WithdrawFormProps) {
+    const account = useAccount();
+
+    const accountPrivider = useMemo(() => {
+        if (account) {
+            return new BrowserProvider(window.ethereum);
+        }
+    }, [account]);
+
+    const [{ amount }, setState] = useSetState({
+        amount: '0',
+    });
+
+    const amountIsNumber = !Number.isNaN(Number(amount));
+    const hasAmountsAndTotalSupply = !!amountsAndTotalSupply;
+
+    const tokenAmounts =
+        hasAmountsAndTotalSupply && amountIsNumber
+            ? amountsAndTotalSupply.amounts.map((item) => {
+                  return {
+                      address: item.address,
+                      amount: (item.amount * BigInt(Math.floor(Number(amount) * 10 ** 18))) / amountsAndTotalSupply.totalSupply,
+                  };
+              })
+            : [];
+
+    const CFXAmount = tokenAmounts.find((item) => item.address === CFXTokenAddress)?.amount || 0n;
+    const ETCAmount = tokenAmounts.find((item) => item.address === ETCTokenAddress)?.amount || 0n;
+
     return (
         <div className="w-[700px] h-[452px] px-5 pt-[26px] pb-5 flex flex-col rounded-[32px] text-white border border-[#D0D0D0] bg-black">
             <div className="pr-2 flex flex-row items-start justify-between">
                 <div className="text-base leading-5 font-normal">Withdraw Liquidity</div>
                 <button data-modal-active="close" className="w-6 h-6 bg-cover bg-[url(/close-icon.svg)]"></button>
             </div>
-            <div className="mt-8 pr-5 text-base leading-5 text-right">Available: {formatNumberWithDecimals(amount)} LP</div>
+            <div className="mt-8 pr-5 text-base leading-5 text-right">Available: {formatNumberWithDecimals(maxAmount)} LP</div>
             <div className="mt-2 flex flex-row rounded-full border border-current">
                 <div className="px-6 py-2.5 text-base/5 font-normal border-r border-current">98ETC-2CFX LP</div>
                 <div className="flex-1 overflow-hidden pr-5 py-2.5 text-base/5 font-black text-right">
-                    <input className="w-full outline-none text-right bg-transparent" defaultValue={'0'} />
+                    <input
+                        value={amount}
+                        onChange={(e) => {
+                            setState({
+                                amount: e.target.value,
+                            });
+                        }}
+                        className="w-full outline-none text-right bg-transparent"
+                    />
                 </div>
             </div>
             <div className="py-6 pl-6 pr-5 mt-5 rounded-[32px] border border-current">
@@ -372,18 +406,77 @@ function WithdrawForm({ amount = 0n }: WithdrawFormProps) {
                         <img className="w-8 h-8" src="/cfx-logo.png" alt="cfx" />
                         <span className="ml-2 text-base/5 font-medium">CFX</span>
                     </div>
-                    <div className="text-base/5 font-black">-</div>
+                    <div className="text-base/5 font-black">{formatNumberWithDecimals8(CFXAmount)}</div>
                 </div>
                 <div className="mt-4 flex flex-row items-center justify-between">
                     <div className="flex flex-row items-center">
                         <img className="w-8 h-8" src="/etc-logo.png" alt="cfx" />
                         <span className="ml-2 text-base/5 font-medium">ETC</span>
                     </div>
-                    <div className="text-base/5 font-black">-</div>
+                    <div className="text-base/5 font-black">{formatNumberWithDecimals8(ETCAmount)}</div>
                 </div>
             </div>
             <div className="flex-1 overflow-hidden flex flex-col justify-end">
-                <button className="w-full h-[46px] text-xl/none rounded-full border border-current">Withdraw</button>
+                <button
+                    onClick={async () => {
+                        if (!amountsAndTotalSupply || !accountPrivider) {
+                            return;
+                        }
+                        // const pairERC20Contract = new Contract(amountsAndTotalSupply?.pairAddress, ERC20ABIJSON);
+
+                        const diff = 0.002; // 0.2%
+                        const diffBigInt = BigInt(diff * 10 ** 3) * 10n ** 15n;
+                        // const pairERC20ContractConnectWallet = pairERC20Contract.connect(signer);
+                        // const poolAddress = await PoolWithBalancerContract.getAddress();
+                        // const approveResult: TransactionResponse = await pairERC20ContractConnectWallet.getFunction('approve')(
+                        //     poolAddress,
+                        //     BigInt(Math.floor(Number(amount) * 10 ** 18)),
+                        //     {}
+                        // );
+                        // const approveReceipt = await approveResult.wait();
+                        // console.log({
+                        //     approveResult,
+                        //     approveReceipt,
+                        // });
+
+                        // const c = PoolWithBalancerContract.connect(signer);
+                        // const gasLimit = await signer.estimateGas({});
+                        // const result: TransactionResponse = await c.getFunction('withdraw')(
+                        //     BigInt(Math.floor(Number(amount) * 10 ** 18)),
+                        //     (ETCAmount * (1n * precisionNumber - diffBigInt)) / precisionNumber, // (ETCAmount * BigInt(diff * 10 ** 18)) / precisionNumber,
+                        //     (CFXAmount * (1n * precisionNumber - diffBigInt)) / precisionNumber, // (CFXAmount * BigInt(diff * 10 ** 18)) / precisionNumber,
+                        //     account,
+                        //     Math.floor(new Date().getTime() / 1000 + 1800),
+                        //     {
+                        //         gasLimit: gasLimit * 100n,
+                        //         gasPrice: 2n * 10n ** 11n,
+                        //     }
+                        // );
+
+                        // const receipt = await result.wait();
+                        // console.log({
+                        //     receipt,
+                        //     result,
+                        // });
+                        const { transactioResponse, transactioRreceipt } = await callContractWriteMethod(
+                            accountPrivider,
+                            PoolWithBalancerContract,
+                            'withdraw',
+                            BigInt(Math.floor(Number(amount) * 10 ** 18)),
+                            (ETCAmount * (1n * precisionNumber - diffBigInt)) / precisionNumber, // (ETCAmount * BigInt(diff * 10 ** 18)) / precisionNumber,
+                            (CFXAmount * (1n * precisionNumber - diffBigInt)) / precisionNumber, // (CFXAmount * BigInt(diff * 10 ** 18)) / precisionNumber,
+                            account,
+                            Math.floor(new Date().getTime() / 1000 + 1800)
+                        );
+                        console.log({
+                            transactioResponse,
+                            transactioRreceipt,
+                        });
+                    }}
+                    className="w-full h-[46px] text-xl/none rounded-full border border-current"
+                >
+                    Withdraw
+                </button>
             </div>
         </div>
     );
@@ -394,9 +487,7 @@ function App() {
 
     const account = useAccount();
 
-    const { data: pairContract } = useRequest(getPairContract, {
-        defaultParams: [[ETCTokenAddress, CFXTokenAddress]],
-    });
+    const { data: pairContract } = useRequest(getPairContract, {});
     const { data: farmLiquidity } = useRequest(getLiquidity, {
         defaultParams: [ETCTokenAddress],
     });
@@ -409,15 +500,8 @@ function App() {
         refreshOnWindowFocus: true,
     });
 
-    useEffect(() => {
-        if (pairContract) {
-            runNormalizedWeight0(pairContract);
-            runNormalizedWeight1(pairContract);
-        }
-    }, [pairContract]);
-
     const { data: apr } = useRequest(getAPR, {
-        defaultParams: [ETCTokenAddress],
+        defaultParams: [],
     });
 
     const { data: LPbalance, run: runBalanceOf } = useRequest(balanceOf, {
@@ -425,9 +509,48 @@ function App() {
         refreshOnWindowFocus: true,
     });
 
+    const { data: PPIAmountAndTotalPrice = [], run: runPPIAmount } = useRequest(
+        async (account) => {
+            const claimReward = await PoolWithBalancerContract.connect(Provider).getFunction('claimReward').staticCall(account);
+            const PPIPrice = await getPriceBasedOnUSDT(PPITokenAddress);
+            return [claimReward, (PPIPrice * claimReward) / precisionNumber] as bigint[];
+        },
+        {
+            manual: true,
+            refreshOnWindowFocus: true,
+        }
+    );
+
+    const { data: amountsAndTotalSupply } = useRequest(
+        async () => {
+            const pairContract = await getPairContract();
+            const [pairAddress, amounts, totalSupply] = await Promise.all([
+                pairContract.getAddress(),
+                getPairAmounts(pairContract),
+                getPoolTotalSupply(pairContract),
+            ]);
+            return {
+                pairAddress,
+                amounts,
+                totalSupply,
+            };
+        },
+        {
+            defaultParams: [],
+        }
+    );
+
+    useEffect(() => {
+        if (pairContract) {
+            runNormalizedWeight0(pairContract);
+            runNormalizedWeight1(pairContract);
+        }
+    }, [pairContract]);
+
     useEffect(() => {
         if (account) {
             runBalanceOf(account);
+            runPPIAmount(account);
         }
     }, [account]);
 
@@ -467,10 +590,10 @@ function App() {
                                     <div className="flex-1">
                                         <div className="text-base leading-5 font-medium">My Pool</div>
                                         <div className="mt-6 text-xl leading-[29px] font-black">
-                                            {formatNumberWithDecimals(LPbalance?.totalBalance || 0n)} LP
+                                            {formatNumberWithDecimals8(LPbalance?.totalBalance || 0n)} LP
                                         </div>
                                         <div className="mt-2 text-sm leading-[17px] font-medium">
-                                            ~${formatNumberWithDecimals(((LPbalance?.lpPrice || 0n) * (LPbalance?.totalBalance || 0n)) / 10n ** 18n)}
+                                            ~${formatNumberWithDecimals(((LPbalance?.lpPrice || 0n) * (LPbalance?.totalBalance || 0n)) / precisionNumber)}
                                         </div>
                                     </div>
                                     <button
@@ -483,10 +606,28 @@ function App() {
                                 <div className="flex-1 p-5 flex flex-col rounded-[32px] text-white bg-[#38A0DA]">
                                     <div className="flex-1">
                                         <div className="text-base leading-5 font-medium">Rewards</div>
-                                        <div className="mt-6 text-xl leading-[29px] font-black">100,000.00 PPI</div>
-                                        <div className="mt-2 text-sm leading-[17px] font-medium">~$000,000.00</div>
+                                        <div className="mt-6 text-xl leading-[29px] font-black">
+                                            {formatNumberWithDecimals8(PPIAmountAndTotalPrice[0] || 0n)} PPI
+                                        </div>
+                                        <div className="mt-2 text-sm leading-[17px] font-medium">
+                                            ~${formatNumberWithDecimals(PPIAmountAndTotalPrice[1] || 0n)}
+                                        </div>
                                     </div>
-                                    <button className="w-full py-2 px-4 h-[46px] flex items-center justify-center text-[24px] rounded-[32px] border border-current">
+                                    <button
+                                        onClick={async () => {
+                                            const { transactioResponse } = await callContractWriteMethod(
+                                                new BrowserProvider(window.ethereum),
+                                                PoolWithBalancerContract,
+                                                'claimReward',
+                                                account
+                                            );
+                                            console.log({
+                                                transactioResponse,
+                                            });
+                                            runPPIAmount(account);
+                                        }}
+                                        className="w-full py-2 px-4 h-[46px] flex items-center justify-center text-[24px] rounded-[32px] border border-current"
+                                    >
                                         Claim
                                     </button>
                                 </div>
@@ -507,7 +648,7 @@ function App() {
                         }
                     }}
                 >
-                    <WithdrawForm amount={LPbalance?.unlockedBalance || 0n} />
+                    <WithdrawForm amountsAndTotalSupply={amountsAndTotalSupply} maxAmount={LPbalance?.unlockedBalance || 0n} />
                 </Modal>
             )}
         </>
