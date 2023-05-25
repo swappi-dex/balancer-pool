@@ -12,7 +12,7 @@ export default function PoolInfoAndMyLocked({ lockedBalanceList = [] }: PoolInfo
     const [tabIndex, setTabIndex] = useState(0);
 
     const { data: infos = [] } = useRequest(
-        async (tokenAddress: string) => {
+        async () => {
             const [amounts, weights, CFXPrice] = await Promise.all([getPairAmountsFromTokens(), getPairWeightFromTokens(), getCFXPrice()]);
 
             const priceBasedOnCFX = await getTokenPriceBasedOnCFX(amounts, pairContract);
@@ -34,7 +34,7 @@ export default function PoolInfoAndMyLocked({ lockedBalanceList = [] }: PoolInfo
             return infos;
         },
         {
-            defaultParams: [ETCTokenAddress],
+            pollingInterval: 1200,
         }
     );
 
