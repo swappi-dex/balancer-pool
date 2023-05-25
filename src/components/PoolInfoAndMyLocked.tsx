@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { balanceOf } from "../service";
+import { formatNumberWithDecimals8 } from "../utils";
 
 interface PoolInfoAndMyLockedProps {
     pololInfo?: Array<{

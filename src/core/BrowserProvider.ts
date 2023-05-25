@@ -2,9 +2,9 @@ import { assertArgument } from 'ethers';
 
 import { BrowserProvider as EBrowserProvider } from 'ethers';
 
-import type { JsonRpcError, JsonRpcPayload, JsonRpcResult, JsonRpcSigner, Eip1193Provider } from 'ethers';
+import type { JsonRpcError, JsonRpcPayload, JsonRpcResult, JsonRpcSigner } from 'ethers';
 import type { Networkish } from 'ethers';
-import EthereumManager from './ethereumManager';
+import EthereumManager from './EthereumManager';
 
 class BrowserProvider extends Object.getPrototypeOf(EBrowserProvider) {
     constructor(public em: EthereumManager, network?: Networkish) {

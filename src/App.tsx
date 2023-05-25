@@ -1,9 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useAccount } from '@cfxjs/use-wallet-react/ethereum';
 import { useRequest, useSetState } from 'ahooks';
-import { Contract, JsonRpcProvider, Result } from 'ethers';
-
-import BrowserProvider from './core/BrowserProvider';
 
 import { formatNumberWithDecimals, formatNumberWithDecimals8 } from './utils';
 import Modal from './components/modal';

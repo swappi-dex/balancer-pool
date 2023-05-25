@@ -8,7 +8,7 @@ import PoolWithBalancerContract from '../contract/abi/PoolWithBalancer.abi';
 import PairContractAbi from '../contract/abi/SwappiPairWeighted.json';
 
 import { callContractMethod } from '../contract';
-import EthereumManager from '../core/ethereumManager';
+import EthereumManager from '../core/EthereumManager';
 import BrowserProvider from '../core/BrowserProvider';
 
 import { CFXTokenAddress, ETCTokenAddress, FaucetUSDTAddress, PPITokenAddress } from '../contract/tokenAddress';
