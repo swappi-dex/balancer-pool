@@ -1,21 +1,43 @@
-import { useState } from "react";
-import { balanceOf } from "../service";
-import { formatNumberWithDecimals8 } from "../utils";
+import { useState } from 'react';
+import { balanceOf, getCFXPrice, getPairAmountsFromTokens, getPairWeightFromTokens, getTokenPriceBasedOnCFX, pairContract, precisionNumber } from '../service';
+import { formatNumberWithDecimals, formatNumberWithDecimals8 } from '../utils';
+import { useRequest } from 'ahooks';
+import { CFXTokenAddress, ETCTokenAddress } from '../contract/tokenAddress';
 
 interface PoolInfoAndMyLockedProps {
-    pololInfo?: Array<{
-        icon: string;
-        name: string;
-        weight: bigint;
-        balance: bigint;
-        value: bigint;
-        percent: bigint;
-    }>;
     lockedBalanceList?: Awaited<ReturnType<typeof balanceOf>>['lockedBalanceList'];
 }
 
 export default function PoolInfoAndMyLocked({ lockedBalanceList = [] }: PoolInfoAndMyLockedProps) {
     const [tabIndex, setTabIndex] = useState(0);
+
+    const { data: infos = [] } = useRequest(
+        async (tokenAddress: string) => {
+            const [amounts, weights, CFXPrice] = await Promise.all([getPairAmountsFromTokens(), getPairWeightFromTokens(), getCFXPrice()]);
+
+            const priceBasedOnCFX = await getTokenPriceBasedOnCFX(amounts, pairContract);
+
+            const totalAmount = amounts.map((i) => i.amount).reduce((a, b) => a + b, 0n);
+
+            const infos = amounts.map((item) => {
+                const isCFX = item.address === CFXTokenAddress;
+                return {
+                    name: isCFX ? 'CFX' : 'ETC',
+                    icon: isCFX ? '/cfx-logo.png' : '/etc-logo.png',
+                    weight: weights.find((i) => i.address === item.address)!.weight,
+                    value: (item.amount * (isCFX ? precisionNumber : priceBasedOnCFX) * CFXPrice) / precisionNumber / precisionNumber,
+                    percent: (item.amount * precisionNumber) / totalAmount,
+                    ...item,
+                };
+            });
+
+            return infos;
+        },
+        {
+            defaultParams: [ETCTokenAddress],
+        }
+    );
+
     const switchTab = (e: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
         const tabIndex = parseInt((e.target as HTMLElement).getAttribute('data-tab-index') || '0');
         setTabIndex(tabIndex);
@@ -88,19 +110,22 @@ export default function PoolInfoAndMyLocked({ lockedBalanceList = [] }: PoolInfo
                             </tr>
                         </thead>
                         <tbody className="">
-                            {Array(10)
-                                .fill('$')
-                                .map((_, index) => {
-                                    return (
-                                        <tr className="h-[48px] w-full border-b last:border-none border-current text-base leading-5 font-medium" key={index}>
-                                            <td className="pl-4 whitespace-nowrap">CFX</td>
-                                            <td className="whitespace-nowrap">98</td>
-                                            <td className="whitespace-nowrap">300.000.12</td>
-                                            <td className="whitespace-nowrap">300.000.12</td>
-                                            <td className="whitespace-nowrap">79.21%</td>
-                                        </tr>
-                                    );
-                                })}
+                            {infos.map(({ icon, name, weight, amount, value, percent }, index) => {
+                                return (
+                                    <tr className="h-[48px] w-full border-b last:border-none border-current text-base leading-5 font-medium" key={index}>
+                                        <td className="pl-4 whitespace-nowrap">
+                                            <div className="flex flex-row items-center">
+                                                <img className="w-6" src={icon} />
+                                                <span className="ml-1">{name}</span>
+                                            </div>
+                                        </td>
+                                        <td className="whitespace-nowrap">{formatNumberWithDecimals8(weight * 100n)}%</td>
+                                        <td className="whitespace-nowrap">{formatNumberWithDecimals(amount)}</td>
+                                        <td className="whitespace-nowrap">{formatNumberWithDecimals(value)}</td>
+                                        <td className="whitespace-nowrap">{formatNumberWithDecimals(percent * 100n)}%</td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>

@@ -56,6 +56,25 @@ export async function getPairAmountsFromTokens() {
     return amounts;
 }
 
+export async function getPairWeightFromTokens() {
+    const [address0, address1, weight0, weight1] = await Promise.all([
+        callContractMethod<string>(Provider, pairContract, 'token0'),
+        callContractMethod<string>(Provider, pairContract, 'token1'),
+        getNormalizedWeight0(pairContract),
+        getNormalizedWeight1(pairContract),
+    ]);
+    return [
+        {
+            address: address0.toLocaleLowerCase(),
+            weight: weight0,
+        },
+        {
+            address: address1.toLocaleLowerCase(),
+            weight: weight1,
+        },
+    ];
+}
+
 // 获取 CFX 相对于 USDT 的价格 也就是相对于法币的价格
 export async function getCFXPrice() {
     const pairAddress = await callContractMethod<string>(Provider, BaseFactoryContract, 'getPair', CFXTokenAddress, FaucetUSDTAddress);
