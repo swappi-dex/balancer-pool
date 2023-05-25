@@ -221,6 +221,14 @@ function Header() {
 }
 
 interface PoolInfoAndMyLockedProps {
+    pololInfo?: Array<{
+        icon: string;
+        name: string;
+        weight: bigint;
+        balance: bigint;
+        value: bigint;
+        percent: bigint;
+    }>;
     lockedBalanceList?: Awaited<ReturnType<typeof balanceOf>>['lockedBalanceList'];
 }
 
@@ -432,42 +440,8 @@ function WithdrawForm({ amountsAndTotalSupply, maxAmount = 0n }: WithdrawFormPro
                         if (!amountsAndTotalSupply || !accountPrivider) {
                             return;
                         }
-                        // const pairERC20Contract = new Contract(amountsAndTotalSupply?.pairAddress, ERC20ABIJSON);
-
                         const diff = 0.002; // 0.2%
                         const diffBigInt = BigInt(diff * 10 ** 3) * 10n ** 15n;
-                        // const pairERC20ContractConnectWallet = pairERC20Contract.connect(signer);
-                        // const poolAddress = await PoolWithBalancerContract.getAddress();
-                        // const approveResult: TransactionResponse = await pairERC20ContractConnectWallet.getFunction('approve')(
-                        //     poolAddress,
-                        //     BigInt(Math.floor(Number(amount) * 10 ** 18)),
-                        //     {}
-                        // );
-                        // const approveReceipt = await approveResult.wait();
-                        // console.log({
-                        //     approveResult,
-                        //     approveReceipt,
-                        // });
-
-                        // const c = PoolWithBalancerContract.connect(signer);
-                        // const gasLimit = await signer.estimateGas({});
-                        // const result: TransactionResponse = await c.getFunction('withdraw')(
-                        //     BigInt(Math.floor(Number(amount) * 10 ** 18)),
-                        //     (ETCAmount * (1n * precisionNumber - diffBigInt)) / precisionNumber, // (ETCAmount * BigInt(diff * 10 ** 18)) / precisionNumber,
-                        //     (CFXAmount * (1n * precisionNumber - diffBigInt)) / precisionNumber, // (CFXAmount * BigInt(diff * 10 ** 18)) / precisionNumber,
-                        //     account,
-                        //     Math.floor(new Date().getTime() / 1000 + 1800),
-                        //     {
-                        //         gasLimit: gasLimit * 100n,
-                        //         gasPrice: 2n * 10n ** 11n,
-                        //     }
-                        // );
-
-                        // const receipt = await result.wait();
-                        // console.log({
-                        //     receipt,
-                        //     result,
-                        // });
                         const { transactioResponse, transactioRreceipt } = await callContractWriteMethod(
                             accountPrivider,
                             PoolWithBalancerContract,
@@ -523,13 +497,17 @@ function App() {
 
     const { data: PPIAmountAndTotalPrice = [], run: runPPIAmount } = useRequest(
         async (account) => {
-            const claimReward = await PoolWithBalancerContract.connect(Provider).getFunction('claimReward').staticCall(account);
+            // 需要使用 钱包的 provider 既使用 入参 也使用了 from
+            const claimReward = await PoolWithBalancerContract.connect(await new BrowserProvider(window.ethereum).getSigner())
+                .getFunction('claimReward')
+                .staticCall(account);
             const PPIPrice = await getPriceBasedOnUSDT(PPITokenAddress);
             return [claimReward, (PPIPrice * claimReward) / precisionNumber] as bigint[];
         },
         {
             manual: true,
             refreshOnWindowFocus: true,
+            pollingInterval: 1000,
         }
     );
 
