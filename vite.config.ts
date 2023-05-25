@@ -26,6 +26,7 @@ export default defineConfig(async ({ mode }) => {
 
     return {
         define: {
+            'import.meta.env.TargetChainId': JSON.stringify(mode === 'development' ? '71' : '1030'),
             'import.meta.env.LPTokenAddress': JSON.stringify(LPTokenAddress.toLocaleLowerCase()),
             'import.meta.env.ETCTokenAddress': JSON.stringify(ETCTokenAddress.toLocaleLowerCase()),
             'import.meta.env.PPITokenAddress': JSON.stringify(PPITokenAddress.toLocaleLowerCase()),
