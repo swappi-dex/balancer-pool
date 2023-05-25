@@ -1,4 +1,6 @@
-import { Contract, ContractRunner, BrowserProvider, TransactionResponse } from 'ethers';
+import { Contract, ContractRunner, TransactionResponse } from 'ethers';
+
+import BrowserProvider from '../core/BrowserProvider';
 
 export function callContractMethod<T = unknown>(Provider: ContractRunner, contract: Contract, method: string, ...args: any[]) {
     const c = contract.connect(Provider);

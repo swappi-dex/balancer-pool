@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAccount } from '@cfxjs/use-wallet-react/ethereum';
 import { useRequest, useSetState } from 'ahooks';
-import { Contract, JsonRpcProvider, BrowserProvider, Result } from 'ethers';
+import { Contract, JsonRpcProvider, Result } from 'ethers';
+
+import BrowserProvider from './core/BrowserProvider';
 
 import { formatNumberWithDecimals, formatNumberWithDecimals8 } from './utils';
 import Modal from './components/modal';
@@ -18,14 +20,17 @@ import PairContractAbi from './contract/abi/SwappiPairWeighted.json';
 import { CFXTokenAddress, ETCTokenAddress, FaucetUSDTAddress, PPITokenAddress } from './contract/tokenAddress';
 import { callContractMethod, callContractWriteMethod } from './contract';
 import Header from './components/header';
-
-const Provider = new JsonRpcProvider(import.meta.env.VITE_ESpaceRpcUrl);
+import EthereumManager from './core/ethereumManager';
 
 const precisionNumber = 10n ** 18n;
 
-async function getPoolTotalSupply(pairContract?: Contract) {
-    const pC = pairContract || (await getPairContract());
-    const totalSupply = await callContractMethod<bigint>(Provider, pC, 'totalSupply');
+const pairContract = new Contract(import.meta.env.LPTokenAddress, PairContractAbi);
+
+const Provider = new JsonRpcProvider(import.meta.env.VITE_ESpaceRpcUrl);
+const accountPrivider = new BrowserProvider(new EthereumManager());
+
+async function getPoolTotalSupply(pairContract: Contract) {
+    const totalSupply = await callContractMethod<bigint>(Provider, pairContract, 'totalSupply');
     return totalSupply;
 }
 
@@ -56,15 +61,8 @@ async function getPairAmounts(PairContract: Contract) {
     ];
 }
 
-async function getPairContract() {
-    const pairAddress = import.meta.env.LPTokenAddress;
-    const pContract = new Contract(pairAddress, PairContractAbi);
-    return pContract;
-}
-
 async function getPairAmountsFromTokens() {
-    const pContract = await getPairContract();
-    const amounts = await getPairAmounts(pContract);
+    const amounts = await getPairAmounts(pairContract);
     return amounts;
 }
 
@@ -100,7 +98,7 @@ async function getTokenPriceBasedOnCFX(amounts: Awaited<ReturnType<typeof getPai
 }
 
 async function getTotalLiquidity(tokenAddress: string) {
-    const [pairContract, amounts, CFXPrice] = await Promise.all([getPairContract(), getPairAmountsFromTokens(), getCFXPrice()]);
+    const [amounts, CFXPrice] = await Promise.all([getPairAmountsFromTokens(), getCFXPrice()]);
     const tokenAmount = amounts.find((item) => item.address === tokenAddress)!.amount;
     const CFXAmount = amounts.find((item) => item.address === CFXTokenAddress)!.amount;
     const priceBasedOnCFX = await getTokenPriceBasedOnCFX(amounts, pairContract);
@@ -109,7 +107,11 @@ async function getTotalLiquidity(tokenAddress: string) {
 }
 
 async function getLiquidity(tokenAddress: string) {
-    const [lpPoolTotalLiquidity, farmPollInfo, totalSupply] = await Promise.all([getTotalLiquidity(tokenAddress), getFarmPoolInfo(), getPoolTotalSupply()]);
+    const [lpPoolTotalLiquidity, farmPollInfo, totalSupply] = await Promise.all([
+        getTotalLiquidity(tokenAddress),
+        getFarmPoolInfo(),
+        getPoolTotalSupply(pairContract),
+    ]);
     return (lpPoolTotalLiquidity * farmPollInfo.totalSupply) / totalSupply;
 }
 
@@ -130,7 +132,7 @@ async function getAPR() {
         callContractMethod<bigint>(Provider, FarmContract, 'totalAllocPoint'),
         getPriceBasedOnUSDT(PPITokenAddress),
         callContractMethod<bigint>(Provider, FarmContract, 'k'),
-        getPoolTotalSupply(),
+        getPoolTotalSupply(pairContract),
     ]);
 
     const poolPPIReward = (farmPollInfo.allocPoint * calculateReward * 3600n * 24n * 365n) / totalAllocPoint;
@@ -146,7 +148,7 @@ async function getAPR() {
 async function balanceOf(account: string) {
     const balanceInfo = await callContractMethod<[bigint, bigint, Result]>(Provider, PoolWithBalancerContract, 'balanceOf', account);
     const totalLiquidity = await getTotalLiquidity(ETCTokenAddress);
-    const totalSupply = await getPoolTotalSupply();
+    const totalSupply = await getPoolTotalSupply(pairContract);
     const [totalBalance, unlockedBalance, lockedBalances] = balanceInfo;
 
     const lockedBalanceList = lockedBalances.toArray().map(([amount, time]) => {
@@ -310,12 +312,6 @@ interface WithdrawFormProps {
 function WithdrawForm({ amountsAndTotalSupply, maxAmount = 0n }: WithdrawFormProps) {
     const account = useAccount();
 
-    const accountPrivider = useMemo(() => {
-        if (account) {
-            return new BrowserProvider(window.ethereum);
-        }
-    }, [account]);
-
     const [{ amount }, setState] = useSetState({
         amount: '0',
     });
@@ -410,7 +406,6 @@ function App() {
 
     const account = useAccount();
 
-    const { data: pairContract } = useRequest(getPairContract, {});
     const { data: farmLiquidity } = useRequest(getLiquidity, {
         defaultParams: [ETCTokenAddress],
         refreshOnWindowFocus: true,
@@ -436,10 +431,20 @@ function App() {
 
     const { data: PPIAmountAndTotalPrice = [], run: runPPIAmount } = useRequest(
         async (account) => {
+            if (!window.ethereum || !(window.ethereum as any).isConnected() || !(window.ethereum as any).selectedAddress) {
+                return [0n, 0n];
+            }
             // 需要使用 钱包的 provider 既使用 入参 也使用了 from
-            const claimReward = await PoolWithBalancerContract.connect(await new BrowserProvider(window.ethereum).getSigner())
-                .getFunction('claimReward')
-                .staticCall(account);
+            const claimReward = await accountPrivider.getSigner().then((signer) =>
+                PoolWithBalancerContract.connect(signer)
+                    .getFunction('claimReward')
+                    .staticCall(account)
+                    .catch((err) => {
+                        console.log(err);
+                        return 0n;
+                    })
+            );
+
             const PPIPrice = await getPriceBasedOnUSDT(PPITokenAddress);
             return [claimReward, (PPIPrice * claimReward) / precisionNumber] as bigint[];
         },
@@ -452,7 +457,6 @@ function App() {
 
     const { data: amountsAndTotalSupply } = useRequest(
         async () => {
-            const pairContract = await getPairContract();
             const [pairAddress, amounts, totalSupply] = await Promise.all([
                 pairContract.getAddress(),
                 getPairAmounts(pairContract),
@@ -545,7 +549,7 @@ function App() {
                                     <button
                                         onClick={async () => {
                                             const { transactioResponse } = await callContractWriteMethod(
-                                                new BrowserProvider(window.ethereum),
+                                                accountPrivider,
                                                 PoolWithBalancerContract,
                                                 'claimReward',
                                                 account
