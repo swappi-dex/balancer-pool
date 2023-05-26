@@ -1,12 +1,12 @@
 import { assertArgument } from 'ethers';
 
-import { BrowserProvider as EBrowserProvider } from 'ethers';
+import { JsonRpcApiProvider } from 'ethers';
 
 import type { JsonRpcError, JsonRpcPayload, JsonRpcResult, JsonRpcSigner } from 'ethers';
 import type { Networkish } from 'ethers';
 import EthereumManager from './EthereumManager';
 
-class BrowserProvider extends Object.getPrototypeOf(EBrowserProvider) {
+class BrowserProvider extends JsonRpcApiProvider {
     constructor(public em: EthereumManager, network?: Networkish) {
         super(network, { batchMaxCount: 1 });
     }
