@@ -106,6 +106,10 @@ body {
     min-height: 100vh;
 }
 
+.hidden-scroll-bar::-webkit-scrollbar {
+    display: none;
+}
+
 .scroll-bar::-webkit-scrollbar {
     display: block;
     width: 8px;
