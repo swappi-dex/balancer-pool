@@ -218,7 +218,7 @@ function App() {
 
     return (
         <>
-            <div className="h-full bg-black">
+            <div className="h-full max-h-[900px] bg-black">
                 <div className="mx-auto min-w-[1440px] w-[1440px] min-h-[-webkit-fill-available] px-5 pb-[22px] flex flex-col justify-between bg-[url('/bg-app.png')] bg-cover">
                     <Header />
                     <div className="-mx-[22px] h-20 bg-[url('/title.svg')]"></div>
