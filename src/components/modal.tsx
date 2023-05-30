@@ -1,4 +1,4 @@
-export interface ModalProsp extends React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement> {}
+export interface ModalProsp extends React.DetailedHTMLProps<React.HTMLAttributes<HTMLDialogElement>, HTMLDialogElement> {}
 
 function getClosestElement(ele: HTMLElement, selector: string) {
     if (ele.matches(selector)) {
@@ -16,15 +16,18 @@ document.addEventListener('click', (e) => {
         }
         const activeType = activeEle.getAttribute('data-modal-active');
         if (activeType) {
-            const scopeEle = document.querySelector('[data-scope="modal"]');
+            const dialogElements = document.querySelectorAll('dialog');
+            const scopeEle = [...dialogElements].find((ele) => ele.matches('[data-scope="modal"]'));
             if (!scopeEle) {
                 return;
             }
             if (activeType === 'open') {
+                scopeEle.show();
                 scopeEle.setAttribute('aria-expanded', 'true');
             }
 
             if (activeType === 'close') {
+                scopeEle.close();
                 scopeEle.removeAttribute('aria-expanded');
             }
         }
@@ -32,5 +35,6 @@ document.addEventListener('click', (e) => {
 });
 
 export default function Modal({ ...rest }: ModalProsp) {
-    return <div {...rest} data-scope="modal" className="hidden aria-expanded:flex fixed top-0 left-0 w-[100vw] h-[100vh] justify-center bg-black/60"></div>;
+    // dialog 默认 display: none dailog open的情况下 hasAttribute open
+    return <dialog {...rest} data-scope="modal" className="top-0 w-full h-full open:flex flex-col items-center bg-black/60"></dialog>;
 }

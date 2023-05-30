@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAccount } from '@cfxjs/use-wallet-react/ethereum';
 import { useRequest, useSetState } from 'ahooks';
 
@@ -43,11 +43,10 @@ interface WithdrawFormProps {
 function WithdrawForm({ amountsAndTotalSupply, maxAmount = 0n }: WithdrawFormProps) {
     const account = useAccount();
 
-    const [{ amount }, setState] = useSetState({
-        amount: '0',
-    });
+    const [_, updateView] = useState<any>(0);
 
-    const amountIsNumber = !Number.isNaN(Number(amount));
+    const inputRef = useRef<HTMLInputElement>(null!);
+    const amountIsNumber = !Number.isNaN(Number(inputRef.current ? inputRef.current.value : '0'));
     const hasAmountsAndTotalSupply = !!amountsAndTotalSupply;
 
     const tokenAmounts =
@@ -55,7 +54,9 @@ function WithdrawForm({ amountsAndTotalSupply, maxAmount = 0n }: WithdrawFormPro
             ? amountsAndTotalSupply.amounts.map((item) => {
                   return {
                       address: item.address,
-                      amount: (item.amount * BigInt(Math.floor(Number(amount) * 10 ** 18))) / amountsAndTotalSupply.totalSupply,
+                      amount:
+                          (item.amount * BigInt(Math.floor(Number(inputRef.current ? inputRef.current.value : '0') * 10 ** 18))) /
+                          amountsAndTotalSupply.totalSupply,
                   };
               })
             : [];
@@ -64,24 +65,43 @@ function WithdrawForm({ amountsAndTotalSupply, maxAmount = 0n }: WithdrawFormPro
     const ETCAmount = tokenAmounts.find((item) => item.address === ETCTokenAddress)?.amount || 0n;
 
     return (
-        <div className="mt-[112px] w-[700px] h-[452px] px-5 pt-[26px] pb-5 flex flex-col rounded-[32px] text-white border border-[#D0D0D0] bg-black">
+        <form
+            method="dailog"
+            onInput={updateView}
+            onReset={updateView}
+            onSubmit={async (e) => {
+                e.preventDefault();
+                if (!amountsAndTotalSupply || !accountPrivider) {
+                    return;
+                }
+                const diff = 0.002; // 0.2%
+                const diffBigInt = BigInt(diff * 10 ** 3) * 10n ** 15n;
+                const { transactioResponse, transactioRreceipt } = await callContractWriteMethod(
+                    accountPrivider,
+                    PoolWithBalancerContract,
+                    'withdraw',
+                    BigInt(Math.floor(Number(inputRef.current ? inputRef.current.value : '0') * 10 ** 18)),
+                    (ETCAmount * (1n * precisionNumber - diffBigInt)) / precisionNumber, // (ETCAmount * BigInt(diff * 10 ** 18)) / precisionNumber,
+                    (CFXAmount * (1n * precisionNumber - diffBigInt)) / precisionNumber, // (CFXAmount * BigInt(diff * 10 ** 18)) / precisionNumber,
+                    account,
+                    Math.floor(new Date().getTime() / 1000 + 1800)
+                );
+                console.log({
+                    transactioResponse,
+                    transactioRreceipt,
+                });
+            }}
+            className="mt-[112px] w-[700px] h-[452px] px-5 pt-[26px] pb-5 flex flex-col rounded-[32px] text-white border border-[#D0D0D0] bg-black"
+        >
             <div className="pr-2 flex flex-row items-start justify-between">
                 <div className="text-base leading-5 font-normal">Withdraw Liquidity</div>
-                <button data-modal-active="close" className="w-6 h-6 bg-cover bg-[url(/close-icon.svg)]"></button>
+                <button type="button" data-modal-active="close" className="w-6 h-6 bg-cover bg-[url(/close-icon.svg)]"></button>
             </div>
             <div className="mt-8 pr-5 text-base leading-5 text-right">Available: {formatNumberWithDecimals(maxAmount)} LP</div>
             <div className="mt-2 flex flex-row rounded-full border border-current">
                 <div className="px-6 py-2.5 text-base/5 font-normal border-r border-current">98ETC-2CFX LP</div>
                 <div className="flex-1 overflow-hidden pr-5 py-2.5 text-base/5 font-black text-right">
-                    <input
-                        value={amount}
-                        onChange={(e) => {
-                            setState({
-                                amount: e.target.value,
-                            });
-                        }}
-                        className="w-full outline-none text-right bg-transparent"
-                    />
+                    <input autoComplete="off" ref={inputRef} name="amount" defaultValue={0} className="w-full outline-none text-right bg-transparent" />
                 </div>
             </div>
             <div className="py-6 pl-6 pr-5 mt-5 rounded-[32px] border border-current">
@@ -101,34 +121,11 @@ function WithdrawForm({ amountsAndTotalSupply, maxAmount = 0n }: WithdrawFormPro
                 </div>
             </div>
             <div className="flex-1 overflow-hidden flex flex-col justify-end">
-                <button
-                    onClick={async () => {
-                        if (!amountsAndTotalSupply || !accountPrivider) {
-                            return;
-                        }
-                        const diff = 0.002; // 0.2%
-                        const diffBigInt = BigInt(diff * 10 ** 3) * 10n ** 15n;
-                        const { transactioResponse, transactioRreceipt } = await callContractWriteMethod(
-                            accountPrivider,
-                            PoolWithBalancerContract,
-                            'withdraw',
-                            BigInt(Math.floor(Number(amount) * 10 ** 18)),
-                            (ETCAmount * (1n * precisionNumber - diffBigInt)) / precisionNumber, // (ETCAmount * BigInt(diff * 10 ** 18)) / precisionNumber,
-                            (CFXAmount * (1n * precisionNumber - diffBigInt)) / precisionNumber, // (CFXAmount * BigInt(diff * 10 ** 18)) / precisionNumber,
-                            account,
-                            Math.floor(new Date().getTime() / 1000 + 1800)
-                        );
-                        console.log({
-                            transactioResponse,
-                            transactioRreceipt,
-                        });
-                    }}
-                    className="w-full h-[46px] text-xl/none rounded-full border border-current"
-                >
+                <button type="submit" className="w-full h-[46px] text-xl/none rounded-full border border-current">
                     Withdraw
                 </button>
             </div>
-        </div>
+        </form>
     );
 }
 
