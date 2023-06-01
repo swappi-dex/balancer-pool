@@ -12,7 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@cfx-kit/wallet-avatar": "^0.0.3",
+    "@cfx-kit/wallet-avatar": "^0.0.5",
     "@cfxjs/use-wallet-react": "^0.0.1-50",
     "ahooks": "^3.7.7",
     "ethers": "^6.3.0",

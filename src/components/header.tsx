@@ -1,4 +1,4 @@
-import { generateAvatarURL } from '@cfx-kit/wallet-avatar';
+import { generateAvatarPNG } from '@cfx-kit/wallet-avatar';
 import { useAccount, useChainId, connect, switchChain } from '@cfxjs/use-wallet-react/ethereum';
 
 import { formatAccount } from '../utils';
@@ -47,7 +47,7 @@ function Header() {
                         <div className="w-6 h-6 rounded-full overflow-hidden">
                             <img
                                 key={account}
-                                src={generateAvatarURL(account)}
+                                src={generateAvatarPNG(account)}
                                 alt="avatar"
                                 onError={(e) => {
                                     (e.target as HTMLImageElement).style.display = 'none';
