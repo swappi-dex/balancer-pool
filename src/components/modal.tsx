@@ -22,7 +22,7 @@ document.addEventListener('click', (e) => {
                 return;
             }
             if (activeType === 'open') {
-                scopeEle.show();
+                scopeEle.showModal();
                 scopeEle.setAttribute('aria-expanded', 'true');
             }
 
