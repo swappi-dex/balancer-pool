@@ -298,7 +298,7 @@ function App() {
                     </div>
                 </div>
             </div>
-            <Modal className="pt-[112px]">
+            <Modal className="">
                 <WithdrawForm amountsAndTotalSupply={amountsAndTotalSupply} maxAmount={LPbalance?.unlockedBalance || 0n} />
             </Modal>
         </>

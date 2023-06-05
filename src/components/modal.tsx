@@ -36,5 +36,5 @@ document.addEventListener('click', (e) => {
 
 export default function Modal({ ...rest }: ModalProsp) {
     // dialog 默认 display: none dailog open的情况下 hasAttribute open
-    return <dialog {...rest} data-scope="modal" className="top-0 w-full h-full open:flex flex-col items-center bg-black/60"></dialog>;
+    return <dialog {...rest} data-scope="modal" className="h-full bg-transparent backdrop:bg-black/60"></dialog>;
 }
